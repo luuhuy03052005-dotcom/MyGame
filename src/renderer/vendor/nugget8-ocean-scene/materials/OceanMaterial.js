@@ -33,6 +33,13 @@ const waterNormal1Url = new URL('../images/waterNormal1.png', import.meta.url).h
 const waterNormal2Url = new URL('../images/waterNormal2.png', import.meta.url).href
 const basicCheckerUrl = new URL('../images/basicChecker.png', import.meta.url).href
 const sandUrl = new URL('../images/sand.png', import.meta.url).href
+const MAX_INTERACTORS = 32
+const interactorPositions = Array.from(
+  { length: MAX_INTERACTORS },
+  () => new THREE.Vector4(99999, 99999, 0, 0)
+)
+const interactorRadii = new Float32Array(MAX_INTERACTORS)
+const interactorStrengths = new Float32Array(MAX_INTERACTORS)
 
 export function Start() {
   surface.vertexShader = OceanShaders.surfaceVertex
@@ -44,6 +51,17 @@ export function Start() {
     _Time: timeUniform,
     _NormalMap1: normalMap1,
     _NormalMap2: normalMap2,
+    _WaveJitterStrength: new THREE.Uniform(0.08),
+    _WaveJitterScale: new THREE.Uniform(0.018),
+    _WaveJitterSpeed: new THREE.Uniform(0.35),
+    _WaveRandomSeed: new THREE.Uniform(12.37),
+    _InteractorCount: new THREE.Uniform(0),
+    _InteractorPositions: new THREE.Uniform(interactorPositions),
+    _InteractorRadii: new THREE.Uniform(interactorRadii),
+    _InteractorStrengths: new THREE.Uniform(interactorStrengths),
+    _InteractionFoamColor: new THREE.Uniform(new THREE.Color(0.92, 0.97, 1.0)),
+    _InteractionFoamStrength: new THREE.Uniform(0.65),
+    _InteractionRippleStrength: new THREE.Uniform(0.07),
   }
 
   textureLoadPromise = _loadTextures()

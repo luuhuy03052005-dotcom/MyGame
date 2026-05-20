@@ -23,8 +23,70 @@ export const surfaceFragment =
 /*glsl*/`
     #include <ocean>
 
+    #define MAX_INTERACTORS 32
+
+    uniform float _WaveJitterStrength;
+    uniform float _WaveJitterScale;
+    uniform float _WaveJitterSpeed;
+    uniform float _WaveRandomSeed;
+
+    uniform int _InteractorCount;
+    uniform vec4 _InteractorPositions[MAX_INTERACTORS];
+    uniform float _InteractorRadii[MAX_INTERACTORS];
+    uniform float _InteractorStrengths[MAX_INTERACTORS];
+    uniform vec3 _InteractionFoamColor;
+    uniform float _InteractionFoamStrength;
+    uniform float _InteractionRippleStrength;
+
     varying vec2 _worldPos;
     varying vec2 _uv;
+
+    float hash12(vec2 p)
+    {
+        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+    }
+
+    float valueNoise(vec2 p)
+    {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash12(i);
+        float b = hash12(i + vec2(1.0, 0.0));
+        float c = hash12(i + vec2(0.0, 1.0));
+        float d = hash12(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    float interactionMask(vec2 worldPos, out float ripple)
+    {
+        float foam = 0.0;
+        ripple = 0.0;
+
+        for (int i = 0; i < MAX_INTERACTORS; i++)
+        {
+            if (i >= _InteractorCount) break;
+
+            vec2 center = _InteractorPositions[i].xy;
+            float radius = _InteractorRadii[i];
+            float strength = _InteractorStrengths[i];
+
+            float d = distance(worldPos, center);
+            float ring = 1.0 - smoothstep(radius * 0.65, radius, d);
+            float edge = smoothstep(radius * 0.25, radius * 0.85, d) *
+                         (1.0 - smoothstep(radius * 0.85, radius, d));
+
+            float wave = sin(d * 18.0 - _Time * 3.0) * 0.5 + 0.5;
+            ripple += edge * wave * strength;
+            foam += ring * strength;
+        }
+
+        foam = clamp(foam, 0.0, 1.0);
+        ripple = clamp(ripple, 0.0, 1.0);
+        return foam;
+    }
 
     void main()
     {
@@ -32,11 +94,25 @@ export const surfaceFragment =
         float viewLen = length(viewVec);
         vec3 viewDir = viewVec / viewLen;
 
-        vec3 normal = texture2D(_NormalMap1, _uv + VELOCITY_1 * _Time).xyz * 2.0 - 1.0;
-        normal += texture2D(_NormalMap2, _uv + VELOCITY_2 * _Time).xyz * 2.0 - 1.0;
+        float jitterNoise = valueNoise(_worldPos * _WaveJitterScale + _WaveRandomSeed);
+        float jitterWave = sin(
+            _worldPos.x * 0.017 +
+            _worldPos.y * 0.021 +
+            _Time * _WaveJitterSpeed +
+            jitterNoise * 6.28318
+        );
+        vec2 jitterOffset = vec2(jitterWave, -jitterWave) * _WaveJitterStrength;
+
+        vec3 normal = texture2D(_NormalMap1, _uv + VELOCITY_1 * _Time + jitterOffset).xyz * 2.0 - 1.0;
+        normal += texture2D(_NormalMap2, _uv + VELOCITY_2 * _Time - jitterOffset * 0.65).xyz * 2.0 - 1.0;
         normal *= NORMAL_MAP_STRENGTH;
         normal += vec3(0.0, 0.0, 1.0);
         normal = normalize(normal).xzy;
+
+        float interactionRipple = 0.0;
+        float interactionFoam = interactionMask(_worldPos, interactionRipple);
+        normal.xz += vec2(interactionRipple, -interactionRipple) * _InteractionRippleStrength;
+        normal = normalize(normal);
 
         sampleDither(gl_FragCoord.xy);
 
@@ -51,6 +127,11 @@ export const surfaceFragment =
             vec3 reflection = sampleSkybox(reflect(viewDir, normal));
             vec3 surface = reflectivity * reflection;
             surface = max(surface, specular);
+            surface = mix(
+                surface,
+                _InteractionFoamColor,
+                interactionFoam * _InteractionFoamStrength
+            );
 
             float fog = clamp(viewLen / FOG_DISTANCE + dither, 0.0, 1.0);
             surface = mix(surface, sampleFog(viewDir), fog);
@@ -77,12 +158,14 @@ export const surfaceFragment =
             sampleY = r.y * (MAX_VIEW_DEPTH - viewLen);
             vec3 rColor = exp((sampleY - MAX_VIEW_DEPTH_DENSITY) * ABSORPTION);
             rColor *= _Light;
+            rColor = mix(rColor, _InteractionFoamColor, interactionFoam * _InteractionFoamStrength);
 
             float alpha = max(t, 0.4);
             gl_FragColor = vec4(mix(rColor, light, alpha), alpha);
             return;
         }
 
+        light = mix(light, _InteractionFoamColor, interactionFoam * _InteractionFoamStrength);
         float alpha = max(t, 0.4);
         gl_FragColor = vec4(light, alpha);
     }

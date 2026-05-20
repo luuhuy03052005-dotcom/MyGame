@@ -4,6 +4,21 @@ This file documents all third-party resources used in Coastlet Builder.
 
 ---
 
+## Kenney Graphic Kit
+
+- **Source**: Kenney asset kit
+- **Local source**: `C:\Users\luuhu\OneDrive\Desktop\Project\Townscraper\Graphic-kit`
+- **License**: Creative Commons Zero (CC0)
+- **Files used**:
+  - `Models/GLB format/*.glb`
+  - `Models/GLB format/Textures/colormap.png`
+- **Usage**:
+  - Stylized modular building assets for Coastlet Builder.
+- **Notes**:
+  - Integrated as GLB assets through Three.js `GLTFLoader`.
+
+---
+
 ## Nugget8 / Three.js-Ocean-Scene (MIT) — PRIMARY SOURCE
 
 - **Source**: https://github.com/Nugget8/Three.js-Ocean-Scene

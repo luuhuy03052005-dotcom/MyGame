@@ -101,6 +101,11 @@ async function bootstrap() {
     AssetManager,
     UndoRedoStack
   )
+  RenderLoop.onTick(() => {
+    CoastletEnvironmentManager.updateOceanInteractors(
+      BuildController.getBuildableObjects()
+    )
+  })
 
   // Raycaster — update buildable objects sau mỗi build/delete
   InputHandler.init(canvas, SceneManager.getCamera())

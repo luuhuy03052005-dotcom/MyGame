@@ -7,6 +7,7 @@ import * as Ocean from '../vendor/nugget8-ocean-scene/scene/Ocean.js'
 import * as SkyboxMaterial from '../vendor/nugget8-ocean-scene/materials/SkyboxMaterial.js'
 import * as OceanMaterial from '../vendor/nugget8-ocean-scene/materials/OceanMaterial.js'
 import * as Time from '../vendor/nugget8-ocean-scene/scripts/Time.js'
+import { OceanInteractionManager } from './OceanInteractionManager.js'
 
 let sceneRef = null
 let cameraRef = null
@@ -53,6 +54,10 @@ const NuggetEnvironmentManager = {
     Ocean.surface.renderOrder = -10
     Ocean.volume.userData.ignoreRaycast = true
     scene.add(Ocean.surface)
+    OceanInteractionManager.init({
+      oceanSurface: Ocean.surface,
+      seaLevel,
+    })
 
     const geo = new THREE.PlaneGeometry(500, 500)
     geo.rotateX(-Math.PI / 2)
@@ -118,6 +123,10 @@ const NuggetEnvironmentManager = {
     return Skybox.skybox
   },
 
+  updateOceanInteractors(buildingObjects) {
+    OceanInteractionManager.updateFromBuildings(buildingObjects)
+  },
+
   isReady() {
     return !!sceneRef
   },
@@ -139,6 +148,7 @@ const NuggetEnvironmentManager = {
       sceneRef.remove(dirLight)
       dirLight = null
     }
+    OceanInteractionManager.clear()
     sceneRef = null
     cameraRef = null
   },

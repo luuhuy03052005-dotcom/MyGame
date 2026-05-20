@@ -37,6 +37,8 @@ import {
   volume as oceanVolume,
   applySkyboxUniforms,
   setCameraForward as setOceanCameraForward,
+  normalMap1,
+  normalMap2,
 } from '../vendor/nugget8-ocean-scene/materials/OceanMaterial.js'
 import {
   Start as OceanStart,
@@ -44,6 +46,12 @@ import {
   surface as oceanSurfaceMesh,
   setCamera as setOceanCamera,
 } from '../vendor/nugget8-ocean-scene/scene/Ocean.js'
+
+// DEBUG: Set to true to use MeshBasicMaterial instead of ocean shader
+const DEBUG_OCEAN_BASIC = false
+// DEBUG: Minimum opacity to prevent invisible ocean
+const DEBUG_MIN_ALPHA = true
+const MIN_OCEAN_ALPHA = 0.3
 
 let scene = null
 let buildPlane = null
@@ -88,6 +96,28 @@ const CoastletEnvironmentManager = {
 
     // Set camera references for ocean
     setOceanCamera(camera)
+
+    // DEBUG: Test ocean geometry visibility with MeshBasicMaterial
+    if (DEBUG_OCEAN_BASIC) {
+      console.log('[CoastletEnvironmentManager] DEBUG MODE: Using MeshBasicMaterial for ocean')
+      oceanSurfaceMesh.material = new THREE.MeshBasicMaterial({
+        color: 0x1e90ff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8,
+      })
+      console.log('[CoastletEnvironmentManager] Ocean surface:', oceanSurfaceMesh)
+      console.log('[CoastletEnvironmentManager] Ocean position:', oceanSurfaceMesh.position.x, oceanSurfaceMesh.position.y, oceanSurfaceMesh.position.z)
+    } else {
+      // CRITICAL: Force minimum opacity on transparent ocean surface
+      // Nugget8 ocean shader outputs alpha based on reflectivity which can be ~0 for calm water
+      // Without this, the ocean surface is invisible
+      if (oceanSurfaceMesh.material.transparent) {
+        oceanSurfaceMesh.material.opacity = 1.0
+        oceanSurfaceMesh.material.depthWrite = true
+        console.log('[CoastletEnvironmentManager] Ocean shader active (transparent mode)')
+      }
+    }
 
     // 7. Connect skybox uniforms to ALL materials (skybox + ocean surface + volume)
     // Apply to skybox material
@@ -137,9 +167,19 @@ const CoastletEnvironmentManager = {
   },
 
   async waitForReady() {
-    // Nugget8 ocean uses procedural textures — no async loading needed
-    // Just give the scene one frame to settle
-    await new Promise(r => setTimeout(r, 100))
+    // Wait for ocean textures to load (TextureLoader.loadAsync)
+    await new Promise(r => setTimeout(r, 800))
+    // Log texture status - normalMap1.value is the texture, .image is the HTMLImageElement
+    if (normalMap1 && normalMap1.value && normalMap1.value.image) {
+      console.log('[CoastletEnvironmentManager] NormalMap1 ready:', normalMap1.value.image.width, 'x', normalMap1.value.image.height)
+    }
+    if (normalMap2 && normalMap2.value && normalMap2.value.image) {
+      console.log('[CoastletEnvironmentManager] NormalMap2 ready:', normalMap2.value.image.width, 'x', normalMap2.value.image.height)
+    }
+    if (!normalMap1?.value?.image || !normalMap2?.value?.image) {
+      console.warn('[CoastletEnvironmentManager] WARNING: Textures may not be loaded yet, using procedural fallbacks')
+    }
+    console.log('[CoastletEnvironmentManager] Ready ✅')
   },
 
   update(dt) {

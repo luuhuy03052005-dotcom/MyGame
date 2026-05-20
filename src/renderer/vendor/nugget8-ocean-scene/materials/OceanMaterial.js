@@ -1,8 +1,8 @@
 /**
  * materials/OceanMaterial.js — Nugget8 Ocean Scene
- * CHANGED:
- * - Procedural texture generation (images/waterNormal1.png, waterNormal2.png don't exist)
- * - Static import of SetSkyboxUniforms from SkyboxMaterial
+ * FIXED:
+ * - Load real PNG textures from images/ folder
+ * - Add minimum alpha to prevent invisible ocean surface
  */
 import * as THREE from 'three'
 import * as OceanShaders from '../shaders/OceanShaders.js'
@@ -18,70 +18,20 @@ const spotLightSharpness = 10
 export const spotLightDistance = 200
 export const spotLightDistanceUniform = new THREE.Uniform(spotLightDistance)
 
-// Procedural normal maps (replaces missing images/waterNormal1.png, waterNormal2.png)
-function createProceduralWaterNormal(size = 512, seed = 0) {
-  const data = new Uint8Array(size * size * 4)
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const nx = Math.sin((x / size) * 8 * Math.PI + seed * 10) * 0.3 +
-                  Math.cos((y / size) * 12 * Math.PI + seed * 7) * 0.2
-      const ny = Math.cos((x / size) * 10 * Math.PI + seed * 13) * 0.2 +
-                  Math.sin((y / size) * 6 * Math.PI + seed * 11) * 0.3
-      data[i] = Math.floor((nx + 1) * 0.5 * 255)
-      data[i + 1] = Math.floor((ny + 1) * 0.5 * 255)
-      data[i + 2] = 255
-      data[i + 3] = 255
-    }
-  }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
-  tex.needsUpdate = true
-  tex.wrapS = THREE.RepeatWrapping
-  tex.wrapT = THREE.RepeatWrapping
-  return tex
-}
+// Uniforms that will hold textures
+export const normalMap1 = new THREE.Uniform(null)
+export const normalMap2 = new THREE.Uniform(null)
+const objectTexture = new THREE.Uniform(null)
+const landTexture = new THREE.Uniform(null)
 
-function createProceduralCheckerTexture(size = 64) {
-  const data = new Uint8Array(size * size * 4)
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const c = ((x / size < 0.5) === (y / size < 0.5)) ? 220 : 80
-      data[i] = c; data[i + 1] = c; data[i + 2] = c; data[i + 3] = 255
-    }
-  }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
-  tex.needsUpdate = true
-  tex.wrapS = THREE.RepeatWrapping
-  tex.wrapT = THREE.RepeatWrapping
-  return tex
-}
-
-function createProceduralSandTexture(size = 256) {
-  const data = new Uint8Array(size * size * 4)
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const n = (Math.random() - 0.5) * 20
-      data[i] = Math.max(0, Math.min(255, 194 + n))
-      data[i + 1] = Math.max(0, Math.min(255, 178 + n))
-      data[i + 2] = Math.max(0, Math.min(255, 138 + n))
-      data[i + 3] = 255
-    }
-  }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
-  tex.needsUpdate = true
-  tex.wrapS = THREE.RepeatWrapping
-  tex.wrapT = THREE.RepeatWrapping
-  return tex
-}
-
-const normalMap1 = new THREE.Uniform(createProceduralWaterNormal(512, 0))
-const normalMap2 = new THREE.Uniform(createProceduralWaterNormal(512, 0.5))
-const objectTexture = new THREE.Uniform(createProceduralCheckerTexture(64))
-const landTexture = new THREE.Uniform(createProceduralSandTexture(256))
 const blendSharpness = 3
 const triplanarScale = 1
+
+// Track loaded textures for debug
+export let normalMap1Loaded = false
+export let normalMap2Loaded = false
+let _normal1Loaded = false
+let _normal2Loaded = false
 
 export function Start() {
   surface.vertexShader = OceanShaders.surfaceVertex
@@ -94,6 +44,13 @@ export function Start() {
     _NormalMap1: normalMap1,
     _NormalMap2: normalMap2,
   }
+
+  // Load real PNG textures
+  _loadTextures()
+
+  // Also create procedural fallbacks for other materials
+  objectTexture.value = _createProceduralCheckerTexture(64)
+  landTexture.value = _createProceduralSandTexture(256)
 
   volume.vertexShader = OceanShaders.volumeVertex
   volume.fragmentShader = OceanShaders.volumeFragment
@@ -113,10 +70,108 @@ export function Start() {
     _SpotLightSharpness: new THREE.Uniform(spotLightSharpness),
     _SpotLightDistance: spotLightDistanceUniform,
   }
+}
 
-  console.log('[OceanMaterial] waterNormal1:', normalMap1.value.image.width, 'x', normalMap1.value.image.height)
-  console.log('[OceanMaterial] waterNormal2:', normalMap2.value.image.width, 'x', normalMap2.value.image.height)
-  console.log('[OceanMaterial] sand texture:', landTexture.value.image.width, 'x', landTexture.value.image.height)
+// Procedural texture helpers (fallbacks when PNGs fail to load)
+function _createProceduralWaterNormal(size = 512, seed = 0) {
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const nx = Math.sin((x / size) * 8 * Math.PI + seed * 10) * 0.5 +
+                  Math.cos((y / size) * 12 * Math.PI + seed * 7) * 0.4
+      const ny = Math.cos((x / size) * 10 * Math.PI + seed * 13) * 0.4 +
+                  Math.sin((y / size) * 6 * Math.PI + seed * 11) * 0.5
+      data[i] = Math.floor((nx + 1) * 0.5 * 255)
+      data[i + 1] = Math.floor((ny + 1) * 0.5 * 255)
+      data[i + 2] = 255
+      data[i + 3] = 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  tex.needsUpdate = true
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(4, 4)
+  console.log('[OceanMaterial] Created procedural waterNormal (seed=' + seed + '):', size, 'x', size)
+  return tex
+}
+
+function _createProceduralCheckerTexture(size = 64) {
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const c = ((x / size < 0.5) === (y / size < 0.5)) ? 220 : 80
+      data[i] = c; data[i + 1] = c; data[i + 2] = c; data[i + 3] = 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  tex.needsUpdate = true
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
+
+function _createProceduralSandTexture(size = 256) {
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const n = (Math.random() - 0.5) * 20
+      data[i] = Math.max(0, Math.min(255, 194 + n))
+      data[i + 1] = Math.max(0, Math.min(255, 178 + n))
+      data[i + 2] = Math.max(0, Math.min(255, 138 + n))
+      data[i + 3] = 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  tex.needsUpdate = true
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
+
+async function _loadTextures() {
+  const loader = new THREE.TextureLoader()
+
+  // Load waterNormal1.png
+  try {
+    const n1 = await loader.loadAsync('./vendor/nugget8-ocean-scene/images/waterNormal1.png')
+    n1.wrapS = THREE.RepeatWrapping
+    n1.wrapT = THREE.RepeatWrapping
+    n1.repeat.set(4, 4)
+    normalMap1.value = n1
+    _normal1Loaded = true
+    normalMap1Loaded = true
+    console.log('[OceanMaterial] Loaded waterNormal1.png:', n1.image.width, 'x', n1.image.height)
+  } catch (e) {
+    console.warn('[OceanMaterial] Failed to load waterNormal1.png:', e.message)
+  }
+
+  // Load waterNormal2.png
+  try {
+    const n2 = await loader.loadAsync('./vendor/nugget8-ocean-scene/images/waterNormal2.png')
+    n2.wrapS = THREE.RepeatWrapping
+    n2.wrapT = THREE.RepeatWrapping
+    n2.repeat.set(4, 4)
+    normalMap2.value = n2
+    _normal2Loaded = true
+    normalMap2Loaded = true
+    console.log('[OceanMaterial] Loaded waterNormal2.png:', n2.image.width, 'x', n2.image.height)
+  } catch (e) {
+    console.warn('[OceanMaterial] Failed to load waterNormal2.png:', e.message)
+  }
+
+  // Fallback: if textures failed, create procedural ones
+  if (!_normal1Loaded) {
+    normalMap1.value = _createProceduralWaterNormal(512, 0)
+    console.warn('[OceanMaterial] Using procedural fallback for waterNormal1')
+  }
+  if (!_normal2Loaded) {
+    normalMap2.value = _createProceduralWaterNormal(512, 0.5)
+    console.warn('[OceanMaterial] Using procedural fallback for waterNormal2')
+  }
 }
 
 // Apply skybox uniforms to ocean materials

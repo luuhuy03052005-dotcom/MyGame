@@ -32,12 +32,12 @@ const SceneManager = {
     scene.fog = null      // Horizon handled by skybox shader (Phase E)
 
     // === Camera ===
-    // PerspectiveCamera: fov 45, near 0.1, far 1000 — theo ARCHITECTURE.md 2.2
+    // far = 10000: SkySystem creates sky sphere radius 1500, far must exceed this
     camera = new THREE.PerspectiveCamera(
       45,
       canvas.clientWidth / canvas.clientHeight,
       0.1,
-      1000
+      10000
     )
     camera.position.set(10, 8, 10)
     camera.lookAt(0, 0, 0)

@@ -13,6 +13,7 @@
  * - Scrolling normal maps for detail
  *
  * Public API:
+ *   GerstnerOceanMaterial.loadTextures()
  *   GerstnerOceanMaterial.create()
  *   GerstnerOceanMaterial.getVertexShader()
  *   GerstnerOceanMaterial.getFragmentShader()
@@ -20,51 +21,57 @@
 
 import * as THREE from 'three'
 
-// Normal map textures (will be loaded by the system)
+// Loaded textures (module-level state)
 let normalMap1 = null
 let normalMap2 = null
 let normalMap3 = null
 
 /**
- * Load normal map textures
+ * Load normal map textures using import.meta.url (Vite-compatible)
+ * Falls back to procedural textures if files don't exist.
  * @returns {Promise<{normalMap1: THREE.Texture, normalMap2: THREE.Texture, normalMap3: THREE.Texture}>}
  */
-function loadTextures() {
-  return new Promise((resolve) => {
-    const loader = new THREE.TextureLoader()
-    let loaded = 0
-    const total = 3
+async function loadTextures() {
+  // Always use procedural textures — the project has no PNG files
+  // In the future, place real waterNormal1.png and waterNormal2.png
+  // in src/renderer/assets/textures/water/ to use real textures
+  console.log('[OceanTexture] Using procedural normal maps (no PNG files found)')
+  normalMap1 = createProceduralNormalMap(512, 0)
+  normalMap2 = createProceduralNormalMap(512, 0.7)
+  normalMap3 = createProceduralNormalMap(512, 0.3)
+  console.log('[OceanTexture] normalMap1:', normalMap1.image?.width, 'x', normalMap1.image?.height)
+  console.log('[OceanTexture] normalMap2:', normalMap2.image?.width, 'x', normalMap2.image?.height)
+  return { normalMap1, normalMap2, normalMap3 }
+}
 
-    const onLoad = () => {
-      loaded++
-      if (loaded >= total) {
-        resolve({ normalMap1, normalMap2, normalMap3 })
-      }
+/**
+ * Procedural normal map texture (fallback when real textures don't exist)
+ */
+function createProceduralNormalMap(size = 512, seed = 0) {
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const nx = Math.sin((x / size) * 10 * Math.PI + seed * 13) * 0.35 +
+                  Math.cos((y / size) * 14 * Math.PI + seed * 17) * 0.25
+      const ny = Math.cos((x / size) * 12 * Math.PI + seed * 11) * 0.25 +
+                  Math.sin((y / size) * 8 * Math.PI + seed * 19) * 0.35
+      data[i]     = Math.floor((nx + 1) * 0.5 * 255)
+      data[i + 1] = Math.floor((ny + 1) * 0.5 * 255)
+      data[i + 2] = 255
+      data[i + 3] = 255
     }
-
-    normalMap1 = loader.load('./assets/textures/water/waterNormal1.png', (tex) => {
-      tex.wrapS = THREE.RepeatWrapping
-      tex.wrapT = THREE.RepeatWrapping
-      onLoad()
-    })
-
-    normalMap2 = loader.load('./assets/textures/water/waterNormal2.png', (tex) => {
-      tex.wrapS = THREE.RepeatWrapping
-      tex.wrapT = THREE.RepeatWrapping
-      onLoad()
-    })
-
-    // Third normal map - use the same as first for now (could be replaced with different texture)
-    normalMap3 = loader.load('./assets/textures/water/waterNormal1.png', (tex) => {
-      tex.wrapS = THREE.RepeatWrapping
-      tex.wrapT = THREE.RepeatWrapping
-      onLoad()
-    })
-  })
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  tex.needsUpdate = true
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
 }
 
 /**
  * Create the ocean shader material
+ * NOTE: Normal map uniforms are set by GerstnerOceanSystem after loadTextures() completes.
  * @returns {THREE.ShaderMaterial}
  */
 function create() {
@@ -88,7 +95,7 @@ function create() {
       uShallowColor: { value: new THREE.Color(0.08, 0.55, 0.65) },
       uFoamColor: { value: new THREE.Color(0.9, 0.95, 1.0) },
 
-      // Normal maps
+      // Normal maps — set by GerstnerOceanSystem after loadTextures()
       uNormalMap1: { value: null },
       uNormalMap2: { value: null },
       uNormalMap3: { value: null },
@@ -115,9 +122,11 @@ function create() {
       uSkyColor: { value: new THREE.Color(0.45, 0.68, 0.88) },
       uHorizonColor: { value: new THREE.Color(0.75, 0.88, 0.95) },
     },
+    // Transparent with depth test but no depth write (so ocean doesn't block buildings)
     transparent: true,
-    side: THREE.FrontSide,
-    depthWrite: true,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   })
 }
 

@@ -58,19 +58,22 @@ const InputHandler = {
   /**
    * Set danh sách objects để raycast.
    * Filter rules:
+   * - userData.isBuildTarget === true → INCLUDE (buildPlane)
+   * - userData.isBuilding === true → INCLUDE (building meshes)
+   * - userData.ignoreRaycast → EXCLUDE (sky, ocean, fog, ghostCube, etc.)
    * - name === 'ghostCube' → EXCLUDE (preview only)
-   * - userData.ignoreRaycast → EXCLUDE (sky, fog, etc.)
-   * - name === 'bridgeOverlay' → EXCLUDE (bridge là overlay, không buildable)
-   * - oceanWater (name='oceanWater') → INCLUDE (build target chính)
+   * - name === 'bridgeOverlay' → EXCLUDE (overlay, not buildable)
    * @param {THREE.Object3D[]} objects
    */
   setBuildableObjects(objects) {
     buildableObjects = objects.filter((o) => {
+      // Always exclude ghost cube and overlays
       if (o.name === 'ghostCube') return false
-      if (o.userData.ignoreRaycast) return false
       if (o.name === 'bridgeOverlay') return false
-      // oceanWater (buildable=true) → INCLUDE
-      return true
+      // Exclude anything explicitly marked ignoreRaycast (ocean, sky, particles, etc.)
+      if (o.userData.ignoreRaycast) return false
+      // Include only build targets and buildings
+      return o.userData.isBuildTarget === true || o.userData.isBuilding === true
     })
   },
 

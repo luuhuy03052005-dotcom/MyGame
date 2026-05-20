@@ -61,9 +61,9 @@ const GerstnerOceanSystem = {
     scene.add(oceanRoot)
 
     // Load textures first, then create ocean
-    await loadOceanTextures()
+    const textures = await loadOceanTextures()
 
-    _createOcean()
+    _createOcean(textures)
 
     isInitialized = true
     console.log('[GerstnerOceanSystem] Initialized with Gerstner waves')
@@ -177,8 +177,9 @@ const GerstnerOceanSystem = {
 
 /**
  * Create the ocean mesh
+ * @param {{ normalMap1, normalMap2, normalMap3 }} textures
  */
-function _createOcean() {
+function _createOcean(textures) {
   // Create high-resolution plane geometry
   const geometry = new THREE.PlaneGeometry(
     OCEAN_SIZE,
@@ -193,6 +194,11 @@ function _createOcean() {
   // Create the shader material
   oceanMaterial = createOceanMaterial()
 
+  // Assign loaded normal map textures to uniforms
+  if (textures?.normalMap1) oceanMaterial.uniforms.uNormalMap1.value = textures.normalMap1
+  if (textures?.normalMap2) oceanMaterial.uniforms.uNormalMap2.value = textures.normalMap2
+  if (textures?.normalMap3) oceanMaterial.uniforms.uNormalMap3.value = textures.normalMap3
+
   // Set initial values
   oceanMaterial.uniforms.uCameraPosition.value.copy(camera.position)
   oceanMaterial.uniforms.uSunDirection.value.copy(sunDirection)
@@ -203,12 +209,14 @@ function _createOcean() {
   oceanMesh = new THREE.Mesh(geometry, oceanMaterial)
   oceanMesh.name = 'gerstnerOcean'
   oceanMesh.userData.ignoreRaycast = true
-  oceanMesh.renderOrder = 10
+  oceanMesh.renderOrder = -5  // Render early so buildings appear on top
+  oceanMesh.frustumCulled = false
 
   // Add to root group (centered at camera position on XZ)
   oceanRoot.add(oceanMesh)
 
   console.log('[GerstnerOceanSystem] Ocean mesh created with', OCEAN_SEGMENTS * OCEAN_SEGMENTS, 'vertices')
+  console.log('[GerstnerOceanSystem] Normal maps assigned:', !!textures?.normalMap1, !!textures?.normalMap2, !!textures?.normalMap3)
 }
 
 export { GerstnerOceanSystem }

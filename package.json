@@ -13,7 +13,8 @@
     "preview": "npx vite preview --root src/renderer --outDir ../../dist/renderer --port 5174",
     "pack": "electron-builder --dir",
     "test": "vitest run --config vitest.config.js",
-    "test:watch": "vitest --config vitest.config.js"
+    "test:watch": "vitest --config vitest.config.js",
+    "demo": "vite build && npx vite preview --port 5174"
   },
   "dependencies": {
     "electron": "^30.0.0",

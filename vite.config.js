@@ -12,7 +12,10 @@ export default defineConfig({
     outDir: '../../dist/renderer',
     emptyOutDir: true,
     rollupOptions: {
-      input: 'src/renderer/index.html',
+      input: {
+        main: 'src/renderer/index.html',
+        'nugget-demo': 'src/renderer/nugget-demo/nugget-demo.html',
+      },
     },
   },
 

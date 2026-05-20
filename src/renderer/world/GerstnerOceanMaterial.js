@@ -28,45 +28,32 @@ let normalMap3 = null
 
 /**
  * Load normal map textures using import.meta.url (Vite-compatible)
- * Falls back to procedural textures if files don't exist.
  * @returns {Promise<{normalMap1: THREE.Texture, normalMap2: THREE.Texture, normalMap3: THREE.Texture}>}
  */
 async function loadTextures() {
-  // Always use procedural textures — the project has no PNG files
-  // In the future, place real waterNormal1.png and waterNormal2.png
-  // in src/renderer/assets/textures/water/ to use real textures
-  console.log('[OceanTexture] Using procedural normal maps (no PNG files found)')
-  normalMap1 = createProceduralNormalMap(512, 0)
-  normalMap2 = createProceduralNormalMap(512, 0.7)
-  normalMap3 = createProceduralNormalMap(512, 0.3)
-  console.log('[OceanTexture] normalMap1:', normalMap1.image?.width, 'x', normalMap1.image?.height)
-  console.log('[OceanTexture] normalMap2:', normalMap2.image?.width, 'x', normalMap2.image?.height)
-  return { normalMap1, normalMap2, normalMap3 }
-}
+  const loader = new THREE.TextureLoader()
+  const normal1Url = new URL(
+    '../vendor/nugget8-ocean-scene/images/waterNormal1.png',
+    import.meta.url
+  ).href
 
-/**
- * Procedural normal map texture (fallback when real textures don't exist)
- */
-function createProceduralNormalMap(size = 512, seed = 0) {
-  const data = new Uint8Array(size * size * 4)
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const nx = Math.sin((x / size) * 10 * Math.PI + seed * 13) * 0.35 +
-                  Math.cos((y / size) * 14 * Math.PI + seed * 17) * 0.25
-      const ny = Math.cos((x / size) * 12 * Math.PI + seed * 11) * 0.25 +
-                  Math.sin((y / size) * 8 * Math.PI + seed * 19) * 0.35
-      data[i]     = Math.floor((nx + 1) * 0.5 * 255)
-      data[i + 1] = Math.floor((ny + 1) * 0.5 * 255)
-      data[i + 2] = 255
-      data[i + 3] = 255
-    }
+  const normal2Url = new URL(
+    '../vendor/nugget8-ocean-scene/images/waterNormal2.png',
+    import.meta.url
+  ).href
+
+  normalMap1 = await loader.loadAsync(normal1Url)
+  normalMap2 = await loader.loadAsync(normal2Url)
+  normalMap3 = normalMap2
+
+  for (const texture of [normalMap1, normalMap2, normalMap3]) {
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
   }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
-  tex.needsUpdate = true
-  tex.wrapS = THREE.RepeatWrapping
-  tex.wrapT = THREE.RepeatWrapping
-  return tex
+
+  console.log('[OceanTexture] normal1:', normalMap1.image?.width, normalMap1.image?.height)
+  console.log('[OceanTexture] normal2:', normalMap2.image?.width, normalMap2.image?.height)
+  return { normalMap1, normalMap2, normalMap3 }
 }
 
 /**

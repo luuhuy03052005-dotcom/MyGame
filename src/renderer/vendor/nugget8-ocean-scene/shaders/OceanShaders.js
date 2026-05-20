@@ -55,7 +55,10 @@ export const surfaceFragment =
             float fog = clamp(viewLen / FOG_DISTANCE + dither, 0.0, 1.0);
             surface = mix(surface, sampleFog(viewDir), fog);
 
-            gl_FragColor = vec4(surface, max(max(reflectivity, specular), fog));
+            // Force minimum alpha so ocean is always visible
+            float alpha = max(max(reflectivity, specular), fog);
+            alpha = max(alpha, 0.4);
+            gl_FragColor = vec4(surface, alpha);
             return;
         }
 
@@ -75,11 +78,13 @@ export const surfaceFragment =
             vec3 rColor = exp((sampleY - MAX_VIEW_DEPTH_DENSITY) * ABSORPTION);
             rColor *= _Light;
 
-            gl_FragColor = vec4(mix(rColor, light, t), 1.0);
+            float alpha = max(t, 0.4);
+            gl_FragColor = vec4(mix(rColor, light, alpha), alpha);
             return;
         }
 
-        gl_FragColor = vec4(light, t);
+        float alpha = max(t, 0.4);
+        gl_FragColor = vec4(light, alpha);
     }
 `;
 

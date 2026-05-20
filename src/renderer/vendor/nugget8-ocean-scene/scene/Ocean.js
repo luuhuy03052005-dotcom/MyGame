@@ -13,8 +13,6 @@ let camera = null
 export function setCamera(cam) { camera = cam }
 
 export function Start() {
-  oceanMaterials.Start()
-
   const halfSize = 1500
   const depth = 1000
 

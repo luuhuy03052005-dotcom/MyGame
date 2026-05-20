@@ -21,3 +21,9 @@ export function Update() {
   deltaTime = clock.getDelta()
   timeUniform.value = time
 }
+
+export function setDeltaTime(dt) {
+  deltaTime = dt
+  time += dt
+  timeUniform.value = time
+}

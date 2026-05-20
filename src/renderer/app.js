@@ -26,7 +26,7 @@ import { ParticleSystem }   from './engine/ParticleSystem.js'
 import { InputHandler }     from './engine/InputHandler.js'
 import { AudioSystem }      from './engine/AudioSystem.js'
 // World (Phase E — Nugget8 Ocean/Skybox)
-import { CoastletEnvironmentManager } from './world/CoastletEnvironmentManager.js'
+import { NuggetEnvironmentManager as CoastletEnvironmentManager } from './world/NuggetEnvironmentManager.js'
 // Game
 import { GridManager }          from './game/GridManager.js'
 import { ProceduralRuleEngine } from './game/ProceduralRuleEngine.js'

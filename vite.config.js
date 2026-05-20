@@ -14,7 +14,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'src/renderer/index.html',
-        'nugget-demo': 'src/renderer/nugget-demo/nugget-demo.html',
+        'debug/nugget-demo': 'src/renderer/debug/nugget-demo/nugget-demo.html',
       },
     },
   },

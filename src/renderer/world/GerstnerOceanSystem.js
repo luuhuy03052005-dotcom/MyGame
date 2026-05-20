@@ -118,7 +118,7 @@ const GerstnerOceanSystem = {
    * @param {THREE.Color} horizonColor
    */
   setSkyColors(skyColor, horizonColor) {
-    if (oceanMaterial) {
+    if (oceanMaterial?.uniforms) {
       oceanMaterial.uniforms.uSkyColor.value.copy(skyColor)
       oceanMaterial.uniforms.uHorizonColor.value.copy(horizonColor)
     }
@@ -186,7 +186,7 @@ function _createOcean(textures) {
   // If blue plane appears → geometry/camera/scene are OK, shader is the problem
   // If nothing appears → geometry/camera/scene have other issues
   oceanMaterial = new THREE.MeshBasicMaterial({
-    color: 0x2f9fc7,
+    color: 0x1e9fd0,
     side: THREE.DoubleSide,
   })
   console.log('[GerstnerOceanSystem] DEBUG: using MeshBasicMaterial instead of shader')

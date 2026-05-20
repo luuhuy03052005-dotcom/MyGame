@@ -3,7 +3,7 @@
  * CHANGED:
  * - SetSkyboxUniforms accepts explicit rotMatrix and dirLight refs
  * - No circular imports
- * - Procedural texture generation replaces missing images/bluenoise.png
+ * - Loads Nugget8's real bluenoise.png through Vite asset URLs
  */
 import * as THREE from 'three'
 const { MathUtils } = THREE
@@ -36,6 +36,8 @@ let l = 0
 // Store refs passed via SetSkyboxUniforms so Update() can use them
 let _skyRotationMatrix = null
 let _dirToLight = null
+const bluenoiseUrl = new URL('../images/bluenoise.png', import.meta.url).href
+const dirToLightUniform = new THREE.Uniform(new THREE.Vector3())
 
 function Vector3ToStarMap(dir, value) {
   const absDir = new THREE.Vector3(Math.abs(dir.x), Math.abs(dir.y), Math.abs(dir.z))
@@ -71,27 +73,13 @@ function Vector3ToStarMap(dir, value) {
   starsMap[j + 2] = value[2]; starsMap[j + 3] = value[3]
 }
 
-// Procedural noise texture (replaces images/bluenoise.png)
-function createProceduralNoiseTexture(size = 256) {
-  const data = new Uint8Array(size * size * 4)
-  for (let i = 0; i < data.length; i += 4) {
-    const noise = Math.random()
-    const val = Math.floor(noise * 255)
-    data[i] = val; data[i + 1] = val; data[i + 2] = val; data[i + 3] = 255
-  }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
-  texture.needsUpdate = true
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
-  return texture
-}
-
 export function Start() {
-  const noiseTexture = createProceduralNoiseTexture(256)
-  dither.value = noiseTexture
-  ditherSize.value.set(noiseTexture.image.width, noiseTexture.image.height)
-
-  console.log('[SkyboxMaterial] Bluenoise:', noiseTexture.image.width, 'x', noiseTexture.image.height)
+  dither.value = new THREE.TextureLoader().load(bluenoiseUrl, (texture) => {
+    ditherSize.value.set(texture.image.width, texture.image.height)
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    console.log('[SkyboxMaterial] Bluenoise:', texture.image.width, 'x', texture.image.height)
+  })
 
   const random = new Random(starsSeed)
   for (let i = 0; i < starsCount; i++) {
@@ -128,6 +116,7 @@ export function Start() {
 export function SetSkyboxUniforms(targetMaterial, rotMatrix, dirLight) {
   _skyRotationMatrix = rotMatrix
   _dirToLight = dirLight
+  dirToLightUniform.value = dirLight
 
   if (!targetMaterial.uniforms) targetMaterial.uniforms = {}
 
@@ -141,7 +130,7 @@ export function SetSkyboxUniforms(targetMaterial, rotMatrix, dirLight) {
   targetMaterial.uniforms._GridSizeScaled = new THREE.Uniform(gridSize * 6)
   targetMaterial.uniforms._Stars = stars
   targetMaterial.uniforms._SpecularVisibility = specularVisibility
-  targetMaterial.uniforms._DirToLight = dirLight
+  targetMaterial.uniforms._DirToLight = dirToLightUniform
   targetMaterial.uniforms._Light = light
 }
 

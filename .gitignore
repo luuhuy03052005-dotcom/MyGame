@@ -1,0 +1,28 @@
+# Electron + Node
+node_modules/
+dist/
+.vite/
+
+# Electron builder output
+dist-electron/
+release/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Build artifacts
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm

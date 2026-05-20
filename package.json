@@ -1,0 +1,29 @@
+{
+  "name": "coastlet-builder",
+  "productName": "Coastlet Builder",
+  "version": "0.1.0",
+  "description": "Desktop Sandbox Game — Procedural Coastal Town Builder",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"electron .\"",
+    "vite": "vite",
+    "electron": "electron .",
+    "build": "vite build && electron-builder",
+    "build:renderer": "vite build",
+    "preview": "npx vite preview --root src/renderer --outDir ../../dist/renderer --port 5174",
+    "pack": "electron-builder --dir",
+    "test": "vitest run --config vitest.config.js",
+    "test:watch": "vitest --config vitest.config.js"
+  },
+  "dependencies": {
+    "electron": "^30.0.0",
+    "lucide": "^1.16.0",
+    "three": "^0.165.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.2.0",
+    "vitest": "^1.6.0"
+  }
+}

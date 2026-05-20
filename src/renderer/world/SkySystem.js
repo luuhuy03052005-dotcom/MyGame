@@ -42,7 +42,8 @@ const SkySystem = {
 
 function _makeMesh() {
   const geo = new THREE.SphereGeometry(1500, 48, 48)
-  geo.scale(-1, 1, 1)
+  // NOTE: NO geo.scale(-1) here — we use BackSide instead.
+  // Using both scale(-1) AND BackSide would cancel out and hide the sky.
 
   skyMat = new THREE.ShaderMaterial({
     uniforms: {
@@ -142,12 +143,14 @@ void main() {
     `,
     side: THREE.BackSide,
     depthWrite: false,
+    depthTest: false,
   })
 
   skyMesh = new THREE.Mesh(geo, skyMat)
   skyMesh.name = 'skybox'
   skyMesh.userData.ignoreRaycast = true
   skyMesh.renderOrder = -100
+  skyMesh.frustumCulled = false
   skyRoot.add(skyMesh)
 }
 

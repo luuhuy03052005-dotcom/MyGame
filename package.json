@@ -9,6 +9,7 @@
     "vite": "vite",
     "electron": "electron .",
     "build": "vite build && electron-builder",
+    "build:dir": "vite build && electron-builder --dir",
     "build:renderer": "vite build",
     "preview": "npx vite preview --root src/renderer --outDir ../../dist/renderer --port 5174",
     "pack": "electron-builder --dir",
@@ -16,13 +17,14 @@
     "test:watch": "vitest --config vitest.config.js",
     "demo": "vite build && npx vite preview --port 5174"
   },
+  "author": "Townscraper Team",
   "dependencies": {
-    "electron": "^30.0.0",
     "lucide": "^1.16.0",
     "three": "^0.165.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
     "vite": "^5.2.0",
     "vitest": "^1.6.0"

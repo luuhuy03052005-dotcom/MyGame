@@ -6,28 +6,22 @@ directories:
   output: dist
   buildResources: assets/build
 
+asar: false
+
 files:
   - src/**/*
   - assets/**/*
   - package.json
 
-extraResources:
-  - from: assets/models/
-    to: models/
-  - from: assets/sounds/
-    to: sounds/
-
 win:
   target:
     - target: nsis
       arch: [x64]
-  icon: assets/build/icon.ico
+  # No custom icon — uses default Electron icon
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  installerIcon: assets/build/icon.ico
-  uninstallerIcon: assets/build/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
 
@@ -35,11 +29,9 @@ mac:
   target:
     - target: dmg
       arch: [x64, arm64]
-  icon: assets/build/icon.icns
   category: public.app-category.games
 
 linux:
   target:
     - AppImage
-  icon: assets/build/icon.png
   category: Game

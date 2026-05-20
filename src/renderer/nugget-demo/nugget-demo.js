@@ -60,7 +60,6 @@ import { Start as OceanStart, Update as OceanUpdate, surface as oceanSurfaceMesh
 const renderer = new THREE.WebGLRenderer({ antialias: false })
 renderer.setPixelRatio(window.devicePixelRatio)
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.autoClearColor = false
 document.body.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
@@ -179,6 +178,9 @@ SettingsStart()
 TimeStart()
 SkyboxMaterialStart()
 SkyboxStart()
+
+// === CRITICAL FIX: BackSide is required for skybox seen from inside ===
+skyboxMaterial.side = THREE.BackSide
 skybox.material = skyboxMaterial
 setSkyboxCamera(camera)
 

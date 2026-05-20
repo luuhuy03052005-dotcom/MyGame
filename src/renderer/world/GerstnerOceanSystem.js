@@ -60,10 +60,11 @@ const GerstnerOceanSystem = {
     oceanRoot.name = 'gerstnerOceanRoot'
     scene.add(oceanRoot)
 
-    // Load textures first, then create ocean
-    const textures = await loadOceanTextures()
-
-    _createOcean(textures)
+    // === DEBUG: Skip texture loading, use MeshBasicMaterial ===
+    // Commenting out loadOceanTextures() to isolate geometry/sky issues
+    // const textures = await loadOceanTextures()
+    // _createOcean(textures)
+    _createOcean(null)
 
     isInitialized = true
     console.log('[GerstnerOceanSystem] Initialized with Gerstner waves')
@@ -80,18 +81,8 @@ const GerstnerOceanSystem = {
 
     elapsedTime += deltaTime
 
-    // Update time uniform
-    oceanMaterial.uniforms.uTime.value = elapsedTime
-
-    // Update camera position
-    if (camera) {
-      oceanMaterial.uniforms.uCameraPosition.value.copy(camera.position)
-    }
-
-    // Update sun uniforms
-    oceanMaterial.uniforms.uSunDirection.value.copy(sunDirection)
-    oceanMaterial.uniforms.uSunColor.value.copy(sunColor)
-    oceanMaterial.uniforms.uSunIntensity.value = sunIntensity
+    // NOTE: Shader uniform updates are skipped during debug (using MeshBasicMaterial)
+    // Re-enable when switching back to createOceanMaterial()
 
     // Follow camera on XZ plane to avoid floating point precision issues
     oceanRoot.position.set(camera.position.x, seaLevel, camera.position.z)
@@ -191,19 +182,19 @@ function _createOcean(textures) {
   // Rotate to be horizontal (X-Z plane)
   geometry.rotateX(-Math.PI / 2)
 
-  // Create the shader material
-  oceanMaterial = createOceanMaterial()
+  // === DEBUG: Use simple MeshBasicMaterial instead of shader ===
+  // If blue plane appears → geometry/camera/scene are OK, shader is the problem
+  // If nothing appears → geometry/camera/scene have other issues
+  oceanMaterial = new THREE.MeshBasicMaterial({
+    color: 0x2f9fc7,
+    side: THREE.DoubleSide,
+  })
+  console.log('[GerstnerOceanSystem] DEBUG: using MeshBasicMaterial instead of shader')
+  console.log('[GerstnerOceanSystem] Geometry vertices:', geometry.attributes.position.count)
+  console.log('[GerstnerOceanSystem] Ocean size:', OCEAN_SIZE, 'segments:', OCEAN_SEGMENTS)
 
-  // Assign loaded normal map textures to uniforms
-  if (textures?.normalMap1) oceanMaterial.uniforms.uNormalMap1.value = textures.normalMap1
-  if (textures?.normalMap2) oceanMaterial.uniforms.uNormalMap2.value = textures.normalMap2
-  if (textures?.normalMap3) oceanMaterial.uniforms.uNormalMap3.value = textures.normalMap3
-
-  // Set initial values
-  oceanMaterial.uniforms.uCameraPosition.value.copy(camera.position)
-  oceanMaterial.uniforms.uSunDirection.value.copy(sunDirection)
-  oceanMaterial.uniforms.uSunColor.value.copy(sunColor)
-  oceanMaterial.uniforms.uSunIntensity.value = sunIntensity
+  // NOTE: Skipping normal map assignment (MeshBasicMaterial has no uniforms)
+  // Re-enable when switching back to createOceanMaterial()
 
   // Create mesh
   oceanMesh = new THREE.Mesh(geometry, oceanMaterial)

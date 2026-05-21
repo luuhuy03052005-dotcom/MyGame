@@ -17,13 +17,13 @@ const noNeighbors = { top: null, bottom: null, left: null, right: null, front: n
 const withNeighbor = (key, cell) => ({ ...noNeighbors, [key]: cell })
 
 describe('ProceduralRuleEngine — Foundation (y=0)', () => {
-  it('single isolated cell → foundation_arch', () => {
+  it('single isolated cell → foundation_seawall_round', () => {
     const cell = makeCell(0, 0, 0)
     const result = ProceduralRuleEngine.resolve(cell, noNeighbors)
-    expect(result.assetType).toBe('foundation_arch')
+    expect(result.assetType).toBe('foundation_seawall_round')
   })
 
-  it('cell with all 4 horizontal neighbors → foundation_solid', () => {
+  it('cell with all 4 horizontal neighbors → foundation_plaza_tile', () => {
     const cell = makeCell(1, 0, 1)
     const neighbors = {
       top: null, bottom: null,
@@ -33,18 +33,18 @@ describe('ProceduralRuleEngine — Foundation (y=0)', () => {
       back:  makeCell(1, 0, 0),
     }
     const result = ProceduralRuleEngine.resolve(cell, neighbors)
-    expect(result.assetType).toBe('foundation_solid')
+    expect(result.assetType).toBe('foundation_plaza_tile')
     expect(result.rotation).toBe(0)
   })
 
-  it('cell with 1 horizontal neighbor → foundation_arch (rìa)', () => {
+  it('cell with 1 horizontal neighbor → foundation_seawall_end', () => {
     const cell = makeCell(0, 0, 0)
     const neighbors = { ...noNeighbors, right: makeCell(1, 0, 0) }
     const result = ProceduralRuleEngine.resolve(cell, neighbors)
-    expect(result.assetType).toBe('foundation_arch')
+    expect(result.assetType).toBe('foundation_seawall_end')
   })
 
-  it('cell with 3 horizontal neighbors → foundation_arch (rìa)', () => {
+  it('cell with 3 horizontal neighbors → foundation_seawall_straight', () => {
     const cell = makeCell(0, 0, 0)
     const neighbors = {
       ...noNeighbors,
@@ -53,7 +53,18 @@ describe('ProceduralRuleEngine — Foundation (y=0)', () => {
       front: makeCell(0, 0, 1),
     }
     const result = ProceduralRuleEngine.resolve(cell, neighbors)
-    expect(result.assetType).toBe('foundation_arch')
+    expect(result.assetType).toBe('foundation_seawall_straight')
+  })
+
+  it('cell with 2 adjacent horizontal neighbors → foundation_seawall_corner', () => {
+    const cell = makeCell(0, 0, 0)
+    const neighbors = {
+      ...noNeighbors,
+      left: makeCell(-1, 0, 0),
+      front: makeCell(0, 0, 1),
+    }
+    const result = ProceduralRuleEngine.resolve(cell, neighbors)
+    expect(result.assetType).toBe('foundation_seawall_corner')
   })
 })
 

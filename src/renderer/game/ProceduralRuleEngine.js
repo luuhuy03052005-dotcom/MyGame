@@ -64,17 +64,40 @@ const ProceduralRuleEngine = {
 
 function _resolveFoundation(cell, neighbors) {
   const open = _getOpenDirections(neighbors)
+  const count = open.length
 
-  if (open.length > 0) {
-    // F-2: cell rìa cụm — foundation_arch
+  if (count === 0) {
+    return { assetType: 'foundation_plaza_tile', rotation: 0 }
+  }
+
+  if (count === 1) {
     return {
-      assetType: 'foundation_arch',
+      assetType: 'foundation_seawall_straight',
       rotation: _calcRotationFromOpenDir(open),
     }
   }
 
-  // F-1: cell interior (count=4) — foundation_solid
-  return { assetType: 'foundation_solid', rotation: 0 }
+  if (count === 2) {
+    if (_areOppositeDirections(open[0], open[1])) {
+      return {
+        assetType: 'foundation_seawall_straight',
+        rotation: _calcRotationFromOpenDir(open),
+      }
+    }
+    return {
+      assetType: 'foundation_seawall_corner',
+      rotation: _calcFoundationCornerRotation(open),
+    }
+  }
+
+  if (count === 3) {
+    return {
+      assetType: 'foundation_seawall_end',
+      rotation: _calcRotationFromOpenDir(open),
+    }
+  }
+
+  return { assetType: 'foundation_seawall_round', rotation: 0 }
 }
 
 // ===== Roof Rules (RULES_REFERENCE.md mục 7) =====
@@ -230,6 +253,24 @@ function _calcTJunctionRotation(neighbors) {
   if (!neighbors.front) return ROTATION.SOUTH
   if (!neighbors.back)  return ROTATION.NORTH
   return 0
+}
+
+function _areOppositeDirections(a, b) {
+  return (
+    (a === 0 && b === 1) ||
+    (a === 1 && b === 0) ||
+    (a === 2 && b === 3) ||
+    (a === 3 && b === 2)
+  )
+}
+
+function _calcFoundationCornerRotation(openDirections) {
+  const dirs = new Set(openDirections)
+  if (dirs.has(2) && dirs.has(1)) return ROTATION.NORTH
+  if (dirs.has(1) && dirs.has(3)) return ROTATION.EAST
+  if (dirs.has(3) && dirs.has(0)) return ROTATION.SOUTH
+  if (dirs.has(0) && dirs.has(2)) return ROTATION.WEST
+  return _calcRotationFromOpenDir(openDirections)
 }
 
 /**

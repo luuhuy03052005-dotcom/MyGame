@@ -304,6 +304,7 @@ function _buildDOM() {
     Right drag &nbsp;— Orbit<br>
     Scroll &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— Zoom<br>
     F &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— Reset camera<br>
+    Q &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— Materials<br>
     C &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— Palette<br>
     Ctrl+Z/Y &nbsp;— Undo/Redo
   `

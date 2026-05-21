@@ -14,12 +14,13 @@ export class Cell {
    * @param {number} z
    * @param {string} color - hex string "#RRGGBB"
    */
-  constructor(x, y, z, color = '#F5DEB3') {
+  constructor(x, y, z, color = '#F5DEB3', material = 'stone_quay') {
     this.id = Cell.getId(x, y, z)
     this.x = x
     this.y = y
     this.z = z
     this.color = color
+    this.material = material
     this.assetType = '_fallback'   // sẽ được resolve bởi ProceduralRuleEngine
     this.rotation = 0              // sẽ được tính bởi ProceduralRuleEngine (radians)
     this.mesh = null               // THREE.Object3D — null cho đến khi spawn
@@ -49,6 +50,7 @@ export class Cell {
       y: this.y,
       z: this.z,
       color: this.color,
+      material: this.material,
       assetType: this.assetType,
       rotation: this.rotation,
     }
@@ -60,7 +62,7 @@ export class Cell {
    * @returns {Cell}
    */
   static fromJSON(data) {
-    const cell = new Cell(data.x, data.y, data.z, data.color)
+    const cell = new Cell(data.x, data.y, data.z, data.color, data.material ?? 'stone_quay')
     cell.assetType = data.assetType ?? '_fallback'
     cell.rotation = data.rotation ?? 0
     return cell

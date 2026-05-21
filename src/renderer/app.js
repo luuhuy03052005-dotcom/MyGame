@@ -38,6 +38,7 @@ import { AssetManager }    from './assets/AssetManager.js'
 import { VALID_ASSET_TYPES } from './assets/AssetRegistry.js'
 // UI
 import { ColorPalette } from './ui/ColorPalette.js'
+import { MaterialPalette } from './ui/MaterialPalette.js'
 import { Toolbar }      from './ui/Toolbar.js'
 
 console.log('[app.js] All imports done')
@@ -116,10 +117,12 @@ async function bootstrap() {
   refreshBuildables()
   window.addEventListener('build:click',      () => setTimeout(refreshBuildables, 0))
   window.addEventListener('build:rightclick', () => setTimeout(refreshBuildables, 0))
+  window.addEventListener('world:visualsChanged', () => setTimeout(refreshBuildables, 0))
 
   setLoadingProgress(85, 'Building UI...')
   const uiRoot = document.getElementById('ui-root')
   ColorPalette.init(uiRoot)
+  MaterialPalette.init(uiRoot)
   Toolbar.init(uiRoot)
 
   setLoadingProgress(95, 'Connecting IPC...')
@@ -183,6 +186,12 @@ function setupGameEvents() {
   // Color palette → BuildController
   window.addEventListener('palette:colorchange', (e) => {
     BuildController.setActiveColor(e.detail.color)
+  })
+  window.addEventListener('palette:materialchange', (e) => {
+    BuildController.setActiveMaterial(e.detail.material)
+  })
+  window.addEventListener('palette:buildselectionchange', (e) => {
+    BuildController.setBuildSelection(e.detail)
   })
 
   // Undo/Redo state → Toolbar buttons
@@ -297,7 +306,14 @@ async function _doSave() {
     const json = WorldSerializer.serialize(
       GridManager,
       { azimuth: 0.785, elevation: 0.611, distance: 15, target: [0, 0, 0] },
-      { activeColor: ColorPalette.getActiveColor(), colors: [] },
+      {
+        activeColor: ColorPalette.getActiveColor(),
+        activeMaterial: MaterialPalette.getActiveMaterial(),
+        activeCategory: MaterialPalette.getActiveCategory(),
+        activeAssetId: MaterialPalette.getActiveAssetId(),
+        autoMode: MaterialPalette.isAutoMode(),
+        colors: [],
+      },
       _currentWorldMeta ?? {}
     )
     const result = await window.electronAPI.saveWorld(json)
@@ -355,10 +371,20 @@ function _loadWorldFromJson(jsonString) {
     if (data.palette?.activeColor) {
       ColorPalette.setActiveColor(data.palette.activeColor)
     }
+    if (data.palette?.activeMaterial) {
+      MaterialPalette.setActiveMaterial(data.palette.activeMaterial)
+    }
+    if (data.palette?.activeCategory) {
+      MaterialPalette.setActiveCategory(data.palette.activeCategory)
+    }
+    if (data.palette?.activeAssetId) {
+      MaterialPalette.setActiveAsset(data.palette.activeAssetId)
+    }
 
     // Rebuild cells từ save data
     for (const cellData of data.cells) {
       const cell = GridManager.addCell(cellData.x, cellData.y, cellData.z, cellData.color)
+      cell.material = cellData.material ?? _resolveLoadedMaterial(cellData.y, data.palette?.activeMaterial)
       cell.assetType = cellData.assetType
       cell.rotation  = cellData.rotation
     }
@@ -366,7 +392,8 @@ function _loadWorldFromJson(jsonString) {
     // Re-resolve và spawn tất cả
     ProceduralRuleEngine.resolveAll(GridManager, (cell) => {
       if (!cell.mesh) {
-        const mesh = AssetManager.get(cell.assetType)
+        const neighbors = GridManager.getNeighbors(cell.x, cell.y, cell.z)
+        const mesh = AssetManager.get(cell.assetType, cell.material, cell.id, _buildLoadGrammarContext(cell, neighbors))
         _applyColorToMesh(mesh, cell.color)
         mesh.position.set(cell.x, cell.y + 0.5, cell.z)
         mesh.rotation.y = cell.rotation
@@ -374,6 +401,7 @@ function _loadWorldFromJson(jsonString) {
         mesh.name = 'building'
         SceneManager.getScene().add(mesh)
         cell.mesh = mesh
+        BuildController.registerBuildableObject(mesh)
       }
     })
 
@@ -381,6 +409,7 @@ function _loadWorldFromJson(jsonString) {
     UndoRedoStack.clear()
     Toolbar.setUndoEnabled(false)
     Toolbar.setRedoEnabled(false)
+    window.dispatchEvent(new CustomEvent('world:visualsChanged'))
     return true
   } catch (err) {
     console.error('[app.js] Error parsing world JSON:', err)
@@ -397,7 +426,14 @@ async function _doSilentAutosave() {
     const json = WorldSerializer.serialize(
       GridManager,
       { azimuth: 0.785, elevation: 0.611, distance: 15, target: [0, 0, 0] },
-      { activeColor: ColorPalette.getActiveColor(), colors: [] },
+      {
+        activeColor: ColorPalette.getActiveColor(),
+        activeMaterial: MaterialPalette.getActiveMaterial(),
+        activeCategory: MaterialPalette.getActiveCategory(),
+        activeAssetId: MaterialPalette.getActiveAssetId(),
+        autoMode: MaterialPalette.isAutoMode(),
+        colors: [],
+      },
       _currentWorldMeta ?? {}
     )
     const res = await window.electronAPI.autosave.write(json)
@@ -441,11 +477,72 @@ function _doNewWorld(showToast) {
     if (cell.mesh) SceneManager.getScene().remove(cell.mesh)
   })
   GridManager.clear()
+  BuildController.clearBuildableObjects()
   UndoRedoStack.clear()
   _currentWorldMeta = null
   Toolbar.setUndoEnabled(false)
   Toolbar.setRedoEnabled(false)
+  window.dispatchEvent(new CustomEvent('world:visualsChanged'))
   if (showToast) Toolbar.showToast('New world created 🗺️', 'info')
+}
+
+function _resolveLoadedMaterial(y, activeMaterial = 'stone_quay') {
+  if (y === 0) {
+    return ['stone_quay', 'stone_plaza', 'rock_edge', 'harbor_pier'].includes(activeMaterial)
+      ? activeMaterial
+      : 'stone_quay'
+  }
+  const aliases = {
+    stone_quay: 'plaster',
+    stone_plaza: 'stone',
+    rock_edge: 'stone',
+    harbor_pier: 'wood',
+    coast: 'plaster',
+  }
+  return aliases[activeMaterial] ?? activeMaterial ?? 'plaster'
+}
+
+function _buildLoadGrammarContext(cell, neighbors) {
+  const openDirections = _loadOpenDirections(neighbors)
+  const hasTop = Boolean(neighbors.top)
+  const hasBottom = Boolean(neighbors.bottom)
+  return {
+    cellId: cell.id,
+    height: cell.y,
+    materialFamily: cell.material ?? 'stone_quay',
+    topologySignature: _loadTopologySignature(neighbors),
+    rotation: cell.rotation,
+    openDirections,
+    primaryOpenDirection: openDirections[0] ?? 2,
+    isExterior: openDirections.length > 0,
+    hasSupport: cell.y === 0 || hasBottom,
+    topExposed: !hasTop,
+    allowDoor: cell.y === 1 && hasBottom && openDirections.length > 0,
+    allowWindow: cell.y > 0 && openDirections.length > 0,
+    allowBalcony: cell.y >= 2 && hasBottom && openDirections.length > 0,
+    useHighRoof: !hasTop && cell.y >= 3,
+    tower: !hasTop && cell.y >= 3,
+  }
+}
+
+function _loadOpenDirections(neighbors) {
+  const open = []
+  if (!neighbors.left) open.push(0)
+  if (!neighbors.right) open.push(1)
+  if (!neighbors.front) open.push(2)
+  if (!neighbors.back) open.push(3)
+  return open
+}
+
+function _loadTopologySignature(neighbors) {
+  return [
+    neighbors.top ? 'T1' : 'T0',
+    neighbors.bottom ? 'B1' : 'B0',
+    neighbors.left ? 'L1' : 'L0',
+    neighbors.right ? 'R1' : 'R0',
+    neighbors.front ? 'F1' : 'F0',
+    neighbors.back ? 'K1' : 'K0',
+  ].join('_')
 }
 
 // Helper dùng trong load flow

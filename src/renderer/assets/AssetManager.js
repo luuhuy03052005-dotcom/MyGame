@@ -23,6 +23,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
+import { BUILD_MATERIALS, DEFAULT_MATERIAL } from './AssetRegistry.js'
 
 // Cache của GLB prototype objects — clone khi dùng
 const _cache = new Map()
@@ -31,9 +32,21 @@ const _loadErrors = new Map()
 const _rawModelCache = new Map()
 let _ready = false
 
+const MATERIAL_IDS = BUILD_MATERIALS.map(material => material.id)
+const VISUAL_VARIANT_COUNT = 3
+
 const MODEL_PATHS = {
-  foundation_arch: 'pillar-wood.glb',
-  foundation_solid: 'planks.glb',
+  foundation_seawall_straight: 'wall-arch.glb',
+  foundation_seawall_corner: 'wall-corner-edge.glb',
+  foundation_seawall_inner_corner: 'road-corner-inner.glb',
+  foundation_seawall_end: 'wall-arch-top.glb',
+  foundation_seawall_round: 'wall-rounded.glb',
+  foundation_plaza_tile: 'road.glb',
+  foundation_water_edge: 'road-edge.glb',
+  foundation_stairs: 'stairs-stone.glb',
+  foundation_rock_edge: 'rock-wide.glb',
+  foundation_arch: 'pillar-stone.glb',
+  foundation_solid: 'road.glb',
   foundation_wall: 'wall-block.glb',
   wall_mid: 'wall.glb',
 
@@ -52,6 +65,15 @@ const MODEL_PATHS = {
 }
 
 const MODEL_SCALE_OVERRIDES = {
+  foundation_seawall_straight: 1.0,
+  foundation_seawall_corner: 1.0,
+  foundation_seawall_inner_corner: 1.0,
+  foundation_seawall_end: 1.0,
+  foundation_seawall_round: 1.0,
+  foundation_plaza_tile: 1.0,
+  foundation_water_edge: 1.0,
+  foundation_stairs: 1.0,
+  foundation_rock_edge: 1.0,
   foundation_arch: 1.0,
   foundation_solid: 1.0,
   foundation_wall: 1.0,
@@ -70,47 +92,407 @@ const MODEL_SCALE_OVERRIDES = {
 
 const MODEL_FILE_URLS = {
   'pillar-wood.glb': new URL('./models/kenney-town-kit/pillar-wood.glb', import.meta.url).href,
+  'pillar-stone.glb': new URL('./models/kenney-town-kit/pillar-stone.glb', import.meta.url).href,
   'planks.glb': new URL('./models/kenney-town-kit/planks.glb', import.meta.url).href,
+  'planks-half.glb': new URL('./models/kenney-town-kit/planks-half.glb', import.meta.url).href,
+  'road.glb': new URL('./models/kenney-town-kit/road.glb', import.meta.url).href,
+  'road-edge.glb': new URL('./models/kenney-town-kit/road-edge.glb', import.meta.url).href,
+  'road-corner.glb': new URL('./models/kenney-town-kit/road-corner.glb', import.meta.url).href,
+  'road-corner-inner.glb': new URL('./models/kenney-town-kit/road-corner-inner.glb', import.meta.url).href,
+  'road-bend.glb': new URL('./models/kenney-town-kit/road-bend.glb', import.meta.url).href,
+  'road-curb.glb': new URL('./models/kenney-town-kit/road-curb.glb', import.meta.url).href,
+  'road-curb-end.glb': new URL('./models/kenney-town-kit/road-curb-end.glb', import.meta.url).href,
   'wall-block.glb': new URL('./models/kenney-town-kit/wall-block.glb', import.meta.url).href,
+  'wall-block-half.glb': new URL('./models/kenney-town-kit/wall-block-half.glb', import.meta.url).href,
   'wall.glb': new URL('./models/kenney-town-kit/wall.glb', import.meta.url).href,
+  'wall-arch.glb': new URL('./models/kenney-town-kit/wall-arch.glb', import.meta.url).href,
+  'wall-arch-top.glb': new URL('./models/kenney-town-kit/wall-arch-top.glb', import.meta.url).href,
+  'wall-corner-edge.glb': new URL('./models/kenney-town-kit/wall-corner-edge.glb', import.meta.url).href,
+  'wall-corner-diagonal.glb': new URL('./models/kenney-town-kit/wall-corner-diagonal.glb', import.meta.url).href,
+  'wall-rounded.glb': new URL('./models/kenney-town-kit/wall-rounded.glb', import.meta.url).href,
+  'wall-side.glb': new URL('./models/kenney-town-kit/wall-side.glb', import.meta.url).href,
+  'wall-half.glb': new URL('./models/kenney-town-kit/wall-half.glb', import.meta.url).href,
   'wall-window-small.glb': new URL('./models/kenney-town-kit/wall-window-small.glb', import.meta.url).href,
+  'wall-window-shutters.glb': new URL('./models/kenney-town-kit/wall-window-shutters.glb', import.meta.url).href,
+  'wall-window-round.glb': new URL('./models/kenney-town-kit/wall-window-round.glb', import.meta.url).href,
+  'wall-window-glass.glb': new URL('./models/kenney-town-kit/wall-window-glass.glb', import.meta.url).href,
+  'wall-window-stone.glb': new URL('./models/kenney-town-kit/wall-window-stone.glb', import.meta.url).href,
   'wall-corner.glb': new URL('./models/kenney-town-kit/wall-corner.glb', import.meta.url).href,
+  'wall-corner-detail.glb': new URL('./models/kenney-town-kit/wall-corner-detail.glb', import.meta.url).href,
   'wall-door.glb': new URL('./models/kenney-town-kit/wall-door.glb', import.meta.url).href,
+  'wall-doorway-round.glb': new URL('./models/kenney-town-kit/wall-doorway-round.glb', import.meta.url).href,
+  'wall-doorway-square.glb': new URL('./models/kenney-town-kit/wall-doorway-square.glb', import.meta.url).href,
+  'wall-wood.glb': new URL('./models/kenney-town-kit/wall-wood.glb', import.meta.url).href,
+  'wall-wood-window-small.glb': new URL('./models/kenney-town-kit/wall-wood-window-small.glb', import.meta.url).href,
+  'wall-wood-window-shutters.glb': new URL('./models/kenney-town-kit/wall-wood-window-shutters.glb', import.meta.url).href,
+  'wall-wood-window-round.glb': new URL('./models/kenney-town-kit/wall-wood-window-round.glb', import.meta.url).href,
+  'wall-wood-window-glass.glb': new URL('./models/kenney-town-kit/wall-wood-window-glass.glb', import.meta.url).href,
+  'wall-wood-corner.glb': new URL('./models/kenney-town-kit/wall-wood-corner.glb', import.meta.url).href,
+  'wall-wood-door.glb': new URL('./models/kenney-town-kit/wall-wood-door.glb', import.meta.url).href,
+  'overhang.glb': new URL('./models/kenney-town-kit/overhang.glb', import.meta.url).href,
+  'lantern.glb': new URL('./models/kenney-town-kit/lantern.glb', import.meta.url).href,
+  'chimney.glb': new URL('./models/kenney-town-kit/chimney.glb', import.meta.url).href,
+  'balcony-wall.glb': new URL('./models/kenney-town-kit/balcony-wall.glb', import.meta.url).href,
+  'balcony-wall-fence.glb': new URL('./models/kenney-town-kit/balcony-wall-fence.glb', import.meta.url).href,
+  'rock-small.glb': new URL('./models/kenney-town-kit/rock-small.glb', import.meta.url).href,
+  'rock-wide.glb': new URL('./models/kenney-town-kit/rock-wide.glb', import.meta.url).href,
+  'rock-large.glb': new URL('./models/kenney-town-kit/rock-large.glb', import.meta.url).href,
+  'stairs-stone.glb': new URL('./models/kenney-town-kit/stairs-stone.glb', import.meta.url).href,
+  'stairs-wide-stone.glb': new URL('./models/kenney-town-kit/stairs-wide-stone.glb', import.meta.url).href,
+  'fence.glb': new URL('./models/kenney-town-kit/fence.glb', import.meta.url).href,
+  'fence-curved.glb': new URL('./models/kenney-town-kit/fence-curved.glb', import.meta.url).href,
   'roof-point.glb': new URL('./models/kenney-town-kit/roof-point.glb', import.meta.url).href,
   'roof-gable.glb': new URL('./models/kenney-town-kit/roof-gable.glb', import.meta.url).href,
   'roof-flat.glb': new URL('./models/kenney-town-kit/roof-flat.glb', import.meta.url).href,
   'roof-corner.glb': new URL('./models/kenney-town-kit/roof-corner.glb', import.meta.url).href,
+  'roof-corner-inner.glb': new URL('./models/kenney-town-kit/roof-corner-inner.glb', import.meta.url).href,
   'roof-gable-top.glb': new URL('./models/kenney-town-kit/roof-gable-top.glb', import.meta.url).href,
+  'roof-gable-detail.glb': new URL('./models/kenney-town-kit/roof-gable-detail.glb', import.meta.url).href,
+  'roof-window.glb': new URL('./models/kenney-town-kit/roof-window.glb', import.meta.url).href,
+  'roof-high-window.glb': new URL('./models/kenney-town-kit/roof-high-window.glb', import.meta.url).href,
+  'roof-high-point.glb': new URL('./models/kenney-town-kit/roof-high-point.glb', import.meta.url).href,
+  'roof-high-gable.glb': new URL('./models/kenney-town-kit/roof-high-gable.glb', import.meta.url).href,
+  'roof-high-gable-detail.glb': new URL('./models/kenney-town-kit/roof-high-gable-detail.glb', import.meta.url).href,
+  'roof-high-flat.glb': new URL('./models/kenney-town-kit/roof-high-flat.glb', import.meta.url).href,
+  'roof-high-corner.glb': new URL('./models/kenney-town-kit/roof-high-corner.glb', import.meta.url).href,
+  'roof-high-gable-top.glb': new URL('./models/kenney-town-kit/roof-high-gable-top.glb', import.meta.url).href,
 }
+
+const WALL_BODY_COLOR = 0xf0d2a4
+const FOUNDATION_BODY_COLOR = 0x9c744f
+const WOOD_COLOR = 0xb97942
+const DARK_WOOD_COLOR = 0x5d3a28
+const STONE_PLATFORM_COLOR = 0x8a8f92
+const STONE_QUAY_COLOR = 0x9f9d91
+const STONE_QUAY_DARK = 0x76786f
+const STONE_QUAY_LIGHT = 0xb9b5a6
 
 const COMPOSITE_ASSETS = {
   foundation_arch: [
-    { file: 'planks.glb', size: 0.96, position: [0, 0.84, 0], colorable: false },
-    { file: 'pillar-wood.glb', size: 0.86, position: [-0.36, 0, -0.36], colorable: false },
-    { file: 'pillar-wood.glb', size: 0.86, position: [0.36, 0, -0.36], colorable: false },
-    { file: 'pillar-wood.glb', size: 0.86, position: [-0.36, 0, 0.36], colorable: false },
-    { file: 'pillar-wood.glb', size: 0.86, position: [0.36, 0, 0.36], colorable: false },
+    { file: 'road.glb', size: 1.08, position: [0, 0.9, 0], colorable: false },
+    { kind: 'box', size: [1.08, 0.07, 1.08], position: [0, 0.39, 0], color: STONE_PLATFORM_COLOR, colorable: false },
+    { file: 'pillar-stone.glb', size: 0.88, position: [-0.43, 0, -0.43], colorable: false },
+    { file: 'pillar-stone.glb', size: 0.88, position: [0.43, 0, -0.43], colorable: false },
+    { file: 'pillar-stone.glb', size: 0.88, position: [-0.43, 0, 0.43], colorable: false },
+    { file: 'pillar-stone.glb', size: 0.88, position: [0.43, 0, 0.43], colorable: false },
+  ],
+  foundation_solid: [
+    { kind: 'box', size: [1.06, 0.18, 1.06], position: [0, 0.34, 0], color: STONE_PLATFORM_COLOR, colorable: false },
+    { file: 'road.glb', size: 1.08, position: [0, 0.9, 0], colorable: false },
+  ],
+  foundation_wall: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: FOUNDATION_BODY_COLOR, colorable: true },
+  ],
+  wall_mid: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: WALL_BODY_COLOR, colorable: true },
+  ],
+  wall_flat: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'wall.glb', size: 1.01, position: [0.015, 0, 0], centerXZ: false, colorable: false },
+  ],
+  wall_window: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'wall-window-small.glb', size: 1.01, position: [0.015, 0, 0], centerXZ: false, colorable: false },
+  ],
+  wall_corner: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'wall-corner.glb', size: 1.02, position: [0, 0, 0], colorable: false },
+  ],
+  wall_door: [
+    { kind: 'box', size: [1.04, 1.0, 1.04], position: [0, 0, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'wall-door.glb', size: 1.01, position: [0.015, 0, 0], centerXZ: false, colorable: false },
   ],
   roof_peak: [
-    { file: 'wall-block.glb', size: 0.94, position: [0, 0, 0], colorable: true },
-    { file: 'roof-point.glb', size: 1.08, position: [0, 0.94, 0], colorable: false },
+    { kind: 'box', size: [1.04, 0.94, 1.04], position: [0, -0.03, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'roof-point.glb', size: 1.14, position: [0, 0.92, 0], colorable: false },
   ],
   roof_gable: [
-    { file: 'wall-block.glb', size: 0.94, position: [0, 0, 0], colorable: true },
-    { file: 'roof-gable.glb', size: 1.08, position: [0, 0.94, 0], colorable: false },
+    { kind: 'box', size: [1.04, 0.94, 1.04], position: [0, -0.03, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'roof-gable.glb', size: 1.14, position: [0, 0.92, 0], colorable: false },
   ],
   roof_flat: [
-    { file: 'wall-block.glb', size: 0.94, position: [0, 0, 0], colorable: true },
-    { file: 'roof-flat.glb', size: 1.08, position: [0, 0.94, 0], colorable: false },
+    { kind: 'box', size: [1.04, 0.96, 1.04], position: [0, -0.02, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'roof-flat.glb', size: 1.12, position: [0, 0.91, 0], colorable: false },
   ],
   roof_hip_corner: [
-    { file: 'wall-block.glb', size: 0.94, position: [0, 0, 0], colorable: true },
-    { file: 'roof-corner.glb', size: 1.08, position: [0, 0.94, 0], colorable: false },
+    { kind: 'box', size: [1.04, 0.94, 1.04], position: [0, -0.03, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'roof-corner.glb', size: 1.14, position: [0, 0.92, 0], colorable: false },
   ],
   roof_t_junction: [
-    { file: 'wall-block.glb', size: 0.94, position: [0, 0, 0], colorable: true },
-    { file: 'roof-gable-top.glb', size: 1.08, position: [0, 0.94, 0], colorable: false },
+    { kind: 'box', size: [1.04, 0.94, 1.04], position: [0, -0.03, 0], color: WALL_BODY_COLOR, colorable: true },
+    { file: 'roof-gable-top.glb', size: 1.12, position: [0, 0.92, 0], colorable: false },
   ],
+}
+
+const MATERIAL_CONFIGS = {
+  plaster: {
+    foundationMode: 'seawall',
+    bodyColor: WALL_BODY_COLOR,
+    foundationColor: STONE_QUAY_COLOR,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: STONE_QUAY_LIGHT,
+    foundationSurface: ['road.glb', 'road-edge.glb', 'road-corner.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-arch-top.glb', 'wall-block.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-corner.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-small.glb', 'rock-large.glb'],
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-small.glb', 'wall-window-shutters.glb', 'wall-window-round.glb'],
+    wallCorner: 'wall-corner.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, 'balcony-wall.glb', 'balcony-wall-fence.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-window.glb', 'roof-point.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-gable-detail.glb', 'roof-gable.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-corner-inner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-gable-detail.glb', 'roof-gable-top.glb'],
+    },
+  },
+  stone_quay: {
+    foundationMode: 'seawall',
+    bodyColor: WALL_BODY_COLOR,
+    foundationColor: STONE_QUAY_COLOR,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: STONE_QUAY_LIGHT,
+    foundationSurface: ['road.glb', 'road-edge.glb', 'road-corner.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-arch-top.glb', 'wall-block.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-corner.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-small.glb', 'rock-large.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-small.glb', 'wall-window-shutters.glb', 'wall-window-stone.glb'],
+    wallCorner: 'wall-corner.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, 'balcony-wall.glb', null],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-window.glb', 'roof-point.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-gable-detail.glb', 'roof-gable.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-corner.glb', 'roof-gable-top.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-gable-detail.glb', 'roof-gable-top.glb'],
+    },
+  },
+  stone_plaza: {
+    foundationMode: 'seawall',
+    bodyColor: 0xa7a399,
+    foundationColor: 0x90928a,
+    foundationDarkColor: 0x6f756f,
+    copingColor: 0xb4b1a5,
+    foundationSurface: ['road.glb', 'road-curb.glb', 'road-edge.glb'],
+    seawallSide: ['wall-block.glb', 'wall-arch.glb', 'wall-side.glb'],
+    seawallCorner: ['wall-corner.glb', 'wall-corner-edge.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-large.glb', 'rock-small.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall-block.glb',
+    wallWindow: ['wall-window-stone.glb', 'wall-window-round.glb', 'wall-window-small.glb'],
+    wallCorner: 'wall-corner-detail.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, null, 'balcony-wall.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-high-point.glb', 'roof-window.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-high-gable.glb', 'roof-gable-detail.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-high-flat.glb', 'roof-flat.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-high-gable-top.glb', 'roof-gable-detail.glb'],
+    },
+  },
+  harbor_pier: {
+    foundationMode: 'pier',
+    bodyColor: 0xb98555,
+    foundationColor: WOOD_COLOR,
+    foundationDarkColor: DARK_WOOD_COLOR,
+    copingColor: 0xd09a66,
+    foundationSurface: ['planks.glb', 'planks-half.glb', 'planks.glb'],
+    pillar: 'pillar-wood.glb',
+    wall: 'wall-wood.glb',
+    wallWindow: ['wall-wood-window-small.glb', 'wall-wood-window-shutters.glb', 'wall-wood-window-round.glb'],
+    wallCorner: 'wall-wood-corner.glb',
+    wallDoor: 'wall-wood-door.glb',
+    balcony: [null, 'balcony-wall.glb', 'balcony-wall-fence.glb'],
+    roofs: {
+      roof_peak: ['roof-high-point.glb', 'roof-point.glb', 'roof-window.glb'],
+      roof_gable: ['roof-high-gable.glb', 'roof-gable.glb', 'roof-gable-detail.glb'],
+      roof_flat: ['roof-high-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-high-corner.glb', 'roof-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-high-gable-top.glb', 'roof-gable-top.glb', 'roof-gable-detail.glb'],
+    },
+  },
+  rock_edge: {
+    foundationMode: 'seawall',
+    bodyColor: 0xa9a38f,
+    foundationColor: 0x7d827d,
+    foundationDarkColor: 0x5f655f,
+    copingColor: 0xaaa796,
+    foundationSurface: ['road-edge.glb', 'road.glb', 'road-curb.glb'],
+    seawallSide: ['wall-block.glb', 'wall-arch.glb', 'wall-rounded.glb'],
+    seawallCorner: ['wall-rounded.glb', 'wall-corner-edge.glb', 'wall-corner.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-large.glb', 'rock-small.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall-block.glb',
+    wallWindow: ['wall-window-stone.glb', 'wall-window-round.glb', 'wall-window-small.glb'],
+    wallCorner: 'wall-corner-detail.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, null, 'balcony-wall.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-high-point.glb', 'roof-window.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-high-gable.glb', 'roof-gable-detail.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-high-flat.glb', 'roof-flat.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-high-gable-top.glb', 'roof-gable-detail.glb'],
+    },
+  },
+  coast: {
+    foundationMode: 'seawall',
+    bodyColor: WALL_BODY_COLOR,
+    foundationColor: STONE_PLATFORM_COLOR,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: STONE_QUAY_LIGHT,
+    foundationSurface: ['road.glb', 'road-edge.glb', 'road-corner.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-arch-top.glb', 'wall-block.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-corner.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-small.glb', 'rock-large.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-small.glb', 'wall-window-shutters.glb', 'wall-window-round.glb'],
+    wallCorner: 'wall-corner.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, 'balcony-wall.glb', 'balcony-wall-fence.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-window.glb', 'roof-point.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-gable-detail.glb', 'roof-gable.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-corner.glb', 'roof-gable-top.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-gable-detail.glb', 'roof-gable-top.glb'],
+    },
+  },
+  stone: {
+    foundationMode: 'seawall',
+    bodyColor: 0xa7a399,
+    foundationColor: 0x7f8588,
+    foundationDarkColor: 0x6f756f,
+    copingColor: 0xb4b1a5,
+    foundationSurface: ['road.glb', 'road-curb.glb', 'road-edge.glb'],
+    seawallSide: ['wall-block.glb', 'wall-arch.glb', 'wall-side.glb'],
+    seawallCorner: ['wall-corner.glb', 'wall-corner-edge.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-large.glb', 'rock-small.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall-block.glb',
+    wallWindow: ['wall-window-stone.glb', 'wall-window-round.glb', 'wall-window-small.glb'],
+    wallCorner: 'wall-corner-detail.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, null, 'balcony-wall.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-high-point.glb', 'roof-window.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-high-gable.glb', 'roof-gable-detail.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-high-flat.glb', 'roof-flat.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-high-gable-top.glb', 'roof-gable-detail.glb'],
+    },
+  },
+  wood: {
+    foundationMode: 'seawall',
+    bodyColor: 0xb98555,
+    foundationColor: STONE_QUAY_COLOR,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: STONE_QUAY_LIGHT,
+    foundationSurface: ['road.glb', 'road-edge.glb', 'road-curb.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-block.glb', 'wall-arch-top.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-corner.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-small.glb', 'rock-large.glb'],
+    pillar: 'pillar-wood.glb',
+    wall: 'wall-wood.glb',
+    wallWindow: ['wall-wood-window-small.glb', 'wall-wood-window-shutters.glb', 'wall-wood-window-round.glb'],
+    wallCorner: 'wall-wood-corner.glb',
+    wallDoor: 'wall-wood-door.glb',
+    balcony: [null, 'balcony-wall.glb', 'balcony-wall-fence.glb'],
+    roofs: {
+      roof_peak: ['roof-high-point.glb', 'roof-point.glb', 'roof-window.glb'],
+      roof_gable: ['roof-high-gable.glb', 'roof-gable.glb', 'roof-gable-detail.glb'],
+      roof_flat: ['roof-high-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-high-corner.glb', 'roof-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-high-gable-top.glb', 'roof-gable-top.glb', 'roof-gable-detail.glb'],
+    },
+  },
+  tower: {
+    foundationMode: 'seawall',
+    bodyColor: 0xd8c7a6,
+    foundationColor: 0x9a958b,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: 0xb7b1a2,
+    foundationSurface: ['road.glb', 'road-edge.glb', 'road-corner.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-block.glb', 'wall-arch-top.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-rounded.glb', 'wall-corner.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-wide.glb', 'rock-small.glb', 'rock-large.glb'],
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-round.glb', 'wall-window-glass.glb', 'wall-window-shutters.glb'],
+    wallCorner: 'wall-corner-detail.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, 'balcony-wall.glb', null],
+    roofs: {
+      roof_peak: ['roof-high-point.glb', 'roof-high-window.glb', 'roof-high-point.glb'],
+      roof_gable: ['roof-high-gable.glb', 'roof-high-gable-detail.glb', 'roof-high-gable.glb'],
+      roof_flat: ['roof-high-flat.glb', 'roof-high-flat.glb', 'roof-flat.glb'],
+      roof_hip_corner: ['roof-high-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-high-gable-top.glb', 'roof-high-gable-detail.glb', 'roof-gable-top.glb'],
+    },
+  },
+  garden: {
+    foundationMode: 'seawall',
+    bodyColor: 0xd7d2b8,
+    foundationColor: 0x9ca28f,
+    foundationDarkColor: 0x737b6c,
+    copingColor: 0xbac1aa,
+    foundationSurface: ['road.glb', 'road-bend.glb', 'road-edge.glb'],
+    seawallSide: ['wall-block.glb', 'wall-arch.glb', 'wall-rounded.glb'],
+    seawallCorner: ['wall-rounded.glb', 'wall-corner-edge.glb', 'wall-corner.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-small.glb', 'rock-wide.glb', 'rock-large.glb'],
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-small.glb', 'wall-window-round.glb', 'wall-window-shutters.glb'],
+    wallCorner: 'wall-corner.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: [null, null, 'balcony-wall-fence.glb'],
+    roofs: {
+      roof_peak: ['roof-point.glb', 'roof-window.glb', 'roof-point.glb'],
+      roof_gable: ['roof-gable.glb', 'roof-gable-detail.glb', 'roof-gable.glb'],
+      roof_flat: ['roof-flat.glb', 'roof-flat.glb', 'roof-gable-top.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-corner-inner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-top.glb', 'roof-gable-detail.glb', 'roof-gable-top.glb'],
+    },
+  },
+  market: {
+    foundationMode: 'seawall',
+    bodyColor: 0xf1c48f,
+    foundationColor: 0x9a958b,
+    foundationDarkColor: STONE_QUAY_DARK,
+    copingColor: 0xb7b1a2,
+    foundationSurface: ['road-corner.glb', 'road.glb', 'road-curb.glb'],
+    seawallSide: ['wall-arch.glb', 'wall-arch-top.glb', 'wall-block.glb'],
+    seawallCorner: ['wall-corner-edge.glb', 'wall-corner.glb', 'wall-rounded.glb'],
+    seawallInnerCorner: ['road-corner-inner.glb', 'wall-corner-diagonal.glb', 'road-bend.glb'],
+    rockEdge: ['rock-small.glb', 'rock-wide.glb', 'rock-large.glb'],
+    pillar: 'pillar-stone.glb',
+    wall: 'wall.glb',
+    wallWindow: ['wall-window-shutters.glb', 'wall-window-round.glb', 'wall-window-small.glb'],
+    wallCorner: 'wall-corner-detail.glb',
+    wallDoor: 'wall-door.glb',
+    balcony: ['balcony-wall.glb', 'balcony-wall-fence.glb', 'balcony-wall.glb'],
+    roofs: {
+      roof_peak: ['roof-window.glb', 'roof-point.glb', 'roof-high-point.glb'],
+      roof_gable: ['roof-gable-detail.glb', 'roof-gable.glb', 'roof-high-gable.glb'],
+      roof_flat: ['roof-gable-top.glb', 'roof-flat.glb', 'roof-high-flat.glb'],
+      roof_hip_corner: ['roof-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb'],
+      roof_t_junction: ['roof-gable-detail.glb', 'roof-gable-top.glb', 'roof-high-gable-top.glb'],
+    },
+  },
 }
 
 const colormapUrl = new URL(
@@ -132,6 +514,42 @@ const _loader = new GLTFLoader(_loadingManager)
 // ===== Placeholder Geometry Definitions =====
 // Theo DATA_MODELS.md mục 8 — Placeholder primitives (Phase 0-4)
 const PLACEHOLDER_DEFS = {
+  foundation_seawall_straight: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_seawall_corner: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_seawall_inner_corner: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_seawall_end: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_seawall_round: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_plaza_tile: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.06, 0.26, 1.06),
+    STONE_PLATFORM_COLOR
+  ),
+  foundation_water_edge: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
+  foundation_stairs: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.06, 0.72, 1.06),
+    STONE_QUAY_COLOR
+  ),
+  foundation_rock_edge: () => _makePlaceholder(
+    new THREE.BoxGeometry(1.08, 1, 1.08),
+    STONE_QUAY_COLOR
+  ),
   foundation_solid: () => _makePlaceholder(
     new THREE.BoxGeometry(0.99, 1, 0.99),
     0x8B7355  // màu bê tông/móng gỗ
@@ -341,11 +759,23 @@ const AssetManager = {
    */
   async preload(keys) {
     const keysToLoad = [...new Set([...keys, ...Object.keys(MODEL_PATHS)])]
-    const total = keysToLoad.length
+    const materialKeys = []
+    for (const key of keysToLoad) {
+      if (key === '_fallback') {
+        materialKeys.push({ key, material: DEFAULT_MATERIAL, variant: 0 })
+        continue
+      }
+      for (const material of MATERIAL_IDS) {
+        for (let variant = 0; variant < VISUAL_VARIANT_COUNT; variant++) {
+          materialKeys.push({ key, material, variant })
+        }
+      }
+    }
+    const total = materialKeys.length
 
-    for (let i = 0; i < keysToLoad.length; i++) {
-      const key = keysToLoad[i]
-      await _loadModel(key)
+    for (let i = 0; i < materialKeys.length; i++) {
+      const { key, material, variant } = materialKeys[i]
+      await _loadModel(key, material, variant)
 
       // Emit progress
       window.dispatchEvent(new CustomEvent('assetmanager:progress', {
@@ -368,10 +798,24 @@ const AssetManager = {
    * PHẢI gọi preload trước — nhưng có fallback nếu key chưa sẵn sàng.
    *
    * @param {string} assetType
+   * @param {string} [materialId]
+   * @param {string} [variantKey]
+   * @param {object} [grammarContext]
    * @returns {THREE.Object3D}
    */
-  get(assetType) {
-    let proto = _cache.get(assetType)
+  get(assetType, materialId = DEFAULT_MATERIAL, variantKey = '', grammarContext = {}) {
+    const material = normalizeMaterialId(materialId)
+    const variant = _variantFromKey(assetType, material, variantKey)
+    const grammarKey = _grammarCacheKey(assetType, material, variant, grammarContext)
+    if (!_cache.has(grammarKey) && _shouldBuildGrammarSpecificPrototype(assetType, grammarContext)) {
+      _buildGrammarSpecificPrototype(assetType, material, variant, grammarContext, grammarKey)
+    }
+
+    let proto = _cache.get(grammarKey)
+      ?? _cache.get(cacheKey(assetType, material, variant))
+      ?? _cache.get(cacheKey(assetType, material, 0))
+      ?? _cache.get(cacheKey(assetType, DEFAULT_MATERIAL, 0))
+      ?? _cache.get(assetType)
     if (!proto) {
       proto = _placeholderCache.get(assetType)
     }
@@ -387,6 +831,66 @@ const AssetManager = {
 
 // ===== Internal Helpers =====
 
+function normalizeMaterialId(materialId) {
+  return MATERIAL_IDS.includes(materialId) ? materialId : DEFAULT_MATERIAL
+}
+
+function cacheKey(assetType, materialId = DEFAULT_MATERIAL, variant = 0) {
+  return `${assetType}::${normalizeMaterialId(materialId)}::${variant}`
+}
+
+function _grammarCacheKey(assetType, materialId, variant, context = {}) {
+  if (!_shouldBuildGrammarSpecificPrototype(assetType, context)) {
+    return cacheKey(assetType, materialId, variant)
+  }
+  if (_isFoundationAsset(assetType)) {
+    const open = Array.isArray(context.openDirections)
+      ? context.openDirections.join(',')
+      : 'generic'
+    return `${cacheKey(assetType, materialId, variant)}::open:${open}`
+  }
+  const open = Array.isArray(context.openDirections)
+    ? context.openDirections.join(',')
+    : 'generic'
+  const flags = [
+    `open:${open}`,
+    `primary:${context.primaryOpenDirection ?? 'none'}`,
+    `height:${context.height ?? 'n/a'}`,
+    context.allowBalcony ? 'balcony' : 'nobalcony',
+    context.allowDoor ? 'door' : 'nodoor',
+    context.allowWindow ? 'window' : 'nowindow',
+    context.useHighRoof ? 'highroof' : 'lowroof',
+    context.tower ? 'tower' : 'notower',
+  ].join(':')
+  return `${cacheKey(assetType, materialId, variant)}::${flags}`
+}
+
+function _shouldBuildGrammarSpecificPrototype(assetType, context = {}) {
+  return (
+    _isFoundationAsset(assetType) ||
+    assetType.startsWith('wall_') ||
+    assetType.startsWith('roof_')
+  ) && Boolean(context && Object.keys(context).length)
+}
+
+function _buildGrammarSpecificPrototype(assetType, material, variant, context, key) {
+  const parts = _getCompositeParts(assetType, material, variant, context)
+  if (!parts) return
+  const prototype = _buildCompositeModelFromCache(assetType, parts)
+  if (prototype) _cache.set(key, prototype)
+}
+
+function _variantFromKey(assetType, materialId, variantKey = '') {
+  if (!variantKey) return 0
+  const hashInput = `${assetType}:${materialId}:${variantKey}`
+  let hash = 5381
+  for (let i = 0; i < hashInput.length; i++) {
+    hash = ((hash << 5) + hash) + hashInput.charCodeAt(i)
+    hash = hash & hash
+  }
+  return Math.abs(hash) % VISUAL_VARIANT_COUNT
+}
+
 function modelUrl(fileName) {
   const url = MODEL_FILE_URLS[fileName]
   if (!url) {
@@ -395,16 +899,19 @@ function modelUrl(fileName) {
   return url
 }
 
-async function _loadModel(assetType) {
-  if (_cache.has(assetType) || _placeholderCache.has(assetType)) return
+async function _loadModel(assetType, materialId = DEFAULT_MATERIAL, variant = 0) {
+  const material = normalizeMaterialId(materialId)
+  const key = cacheKey(assetType, material, variant)
+  if (_cache.has(key) || _placeholderCache.has(assetType)) return
 
-  if (COMPOSITE_ASSETS[assetType]) {
+  const compositeParts = _getCompositeParts(assetType, material, variant)
+  if (compositeParts) {
     try {
-      const prototype = await _buildCompositeModel(assetType, COMPOSITE_ASSETS[assetType])
-      _cache.set(assetType, prototype)
-      console.log(`[AssetManager] Loaded composite GLB ${assetType}`)
+      const prototype = await _buildCompositeModel(assetType, compositeParts)
+      _cache.set(key, prototype)
+      console.log(`[AssetManager] Loaded composite GLB ${assetType} (${material} v${variant})`)
     } catch (err) {
-      console.warn(`[AssetManager] Failed to build composite ${assetType}, using placeholder fallback`, err)
+      console.warn(`[AssetManager] Failed to build composite ${assetType} (${material} v${variant}), using placeholder fallback`, err)
       _loadErrors.set(assetType, err)
       _buildPlaceholder(assetType)
     }
@@ -422,13 +929,424 @@ async function _loadModel(assetType) {
     const gltf = await _loader.loadAsync(modelUrl(fileName))
     const prototype = gltf.scene
     _prepareModel(prototype, assetType)
-    _cache.set(assetType, prototype)
+    _cache.set(key, prototype)
     console.log(`[AssetManager] Loaded GLB ${assetType} -> ${fileName}`)
   } catch (err) {
     console.warn(`[AssetManager] Failed to load ${fileName}, using placeholder fallback`, err)
     _loadErrors.set(assetType, err)
     _buildPlaceholder(assetType)
   }
+}
+
+function _pick(value, variant = 0) {
+  if (!Array.isArray(value)) return value
+  return value[variant % value.length]
+}
+
+function _getCompositeParts(assetType, materialId = DEFAULT_MATERIAL, variant = 0, context = {}) {
+  const material = MATERIAL_CONFIGS[normalizeMaterialId(materialId)] ?? MATERIAL_CONFIGS[DEFAULT_MATERIAL]
+
+  if (_isFoundationAsset(assetType)) {
+    if (material.foundationMode === 'pier' && (assetType === 'foundation_arch' || assetType === 'foundation_seawall_straight' || assetType === 'foundation_seawall_corner' || assetType === 'foundation_seawall_end' || assetType === 'foundation_seawall_round')) {
+      return _getPierFoundationParts(material, variant)
+    }
+    return _getSeawallFoundationParts(assetType, material, variant, context)
+  }
+
+  if (assetType === 'foundation_arch') {
+    const surface = _pick(material.foundationSurface, variant)
+    return [
+      { file: surface, size: 1.08, position: [0, 0.9, 0], colorable: false },
+      { kind: 'box', size: [1.08, 0.07, 1.08], position: [0, 0.39, 0], color: material.foundationColor, colorable: false },
+      { file: material.pillar, size: 0.88, position: [-0.43, 0, -0.43], colorable: false },
+      { file: material.pillar, size: 0.88, position: [0.43, 0, -0.43], colorable: false },
+      { file: material.pillar, size: 0.88, position: [-0.43, 0, 0.43], colorable: false },
+      { file: material.pillar, size: 0.88, position: [0.43, 0, 0.43], colorable: false },
+    ]
+  }
+
+  if (assetType === 'foundation_solid') {
+    return [
+      { kind: 'box', size: [1.06, 0.18, 1.06], position: [0, 0.34, 0], color: material.foundationColor, colorable: false },
+      { file: _pick(material.foundationSurface, variant), size: 1.08, position: [0, 0.9, 0], colorable: false },
+    ]
+  }
+
+  if (assetType === 'foundation_wall' || assetType === 'wall_mid') {
+    return _getFacadeParts(assetType, material, variant, context, {
+      bodyColor: assetType === 'foundation_wall' ? material.foundationColor : material.bodyColor,
+    })
+  }
+
+  if (
+    assetType === 'wall_flat' ||
+    assetType === 'wall_window' ||
+    assetType === 'wall_corner' ||
+    assetType === 'wall_door'
+  ) {
+    return _getFacadeParts(assetType, material, variant, context)
+  }
+
+  if (assetType.startsWith('roof_')) {
+    const roofFile = _pick(
+      _roofOptionsForContext(material, assetType, context),
+      variant
+    )
+    if (!roofFile) return COMPOSITE_ASSETS[assetType] ?? null
+    const parts = _getFacadeParts('wall_window', material, variant, context, {
+      bodyHeight: assetType === 'roof_flat' ? 0.88 : 0.86,
+      bodyY: assetType === 'roof_flat' ? -0.06 : -0.08,
+      roofBase: true,
+    })
+    return [
+      ...parts,
+      { file: roofFile, layer: 'roofLayer', size: assetType === 'roof_flat' ? 1.12 : 1.14, position: [0, assetType === 'roof_flat' ? 0.9 : 0.91, 0], colorable: false },
+    ]
+  }
+
+  return COMPOSITE_ASSETS[assetType] ?? null
+}
+
+function _getFacadeParts(assetType, material, variant = 0, context = {}, options = {}) {
+  const bodyHeight = options.bodyHeight ?? 1.0
+  const bodyY = options.bodyY ?? 0
+  const bodyColor = options.bodyColor ?? material.bodyColor
+  const openWorld = Array.isArray(context.openDirections) && context.openDirections.length
+    ? context.openDirections
+    : (context.isExterior ? [context.primaryOpenDirection ?? 2] : [])
+  const openLocal = openWorld.map(direction => _worldDirectionToLocal(direction, context.rotation ?? 0))
+  const primaryWorld = context.primaryOpenDirection ?? openWorld[0] ?? 2
+  const primaryLocal = _worldDirectionToLocal(primaryWorld, context.rotation ?? 0)
+
+  const parts = [
+    {
+      kind: 'box',
+      layer: 'facadeLayer',
+      size: [1.04, bodyHeight, 1.04],
+      position: [0, bodyY, 0],
+      color: bodyColor,
+      colorable: true,
+    },
+  ]
+
+  if (assetType === 'wall_corner') {
+    parts.push({
+      file: material.wallCorner,
+      layer: 'facadeLayer',
+      size: 1.02,
+      position: [0, bodyY, 0],
+      colorable: false,
+    })
+  }
+
+  openLocal.forEach((localDirection, index) => {
+    const worldDirection = openWorld[index]
+    const detailType = _facadeDetailType(assetType, context, worldDirection, index)
+    const side = _sideTransform(localDirection)
+
+    if (localDirection === primaryLocal && assetType !== 'wall_corner') {
+      const facadeFile = _facadeModelFile(detailType, material, variant)
+      if (facadeFile) {
+        parts.push({
+          file: facadeFile,
+          layer: 'facadeLayer',
+          size: 0.96,
+          position: [0, bodyY, 0],
+          rotation: side.rotation,
+          colorable: false,
+        })
+      }
+    }
+
+    parts.push(..._facadeDetailParts(localDirection, detailType, bodyY))
+
+    const shouldBalcony = context.allowBalcony &&
+      detailType !== 'door' &&
+      _contextHash(context, `balcony:${worldDirection}`) % 4 === 0
+    if (shouldBalcony) {
+      parts.push(..._balconyParts(localDirection, bodyY))
+      const balconyFile = _pick(material.balcony, variant)
+      if (balconyFile && localDirection === primaryLocal) {
+        parts.push({
+          file: balconyFile,
+          layer: 'facadeLayer',
+          size: 0.48,
+          position: _sidePosition(localDirection, 0.62, bodyY - 0.12),
+          rotation: side.rotation,
+          centerXZ: true,
+          colorable: false,
+        })
+      }
+    }
+  })
+
+  return parts
+}
+
+function _facadeModelFile(detailType, material, variant) {
+  if (detailType === 'door') return material.wallDoor
+  if (detailType === 'window') return _pick(material.wallWindow, variant)
+  return material.wall
+}
+
+function _facadeDetailType(assetType, context, worldDirection, index) {
+  if (
+    context.allowDoor &&
+    (assetType === 'wall_door' || (worldDirection === context.primaryOpenDirection && _contextHash(context, `door:${worldDirection}`) % 5 === 0))
+  ) {
+    return 'door'
+  }
+
+  if (!context.allowWindow) return 'plain'
+
+  if (assetType === 'wall_window') return 'window'
+  if (assetType === 'wall_corner' && index < 2) return 'window'
+
+  return _contextHash(context, `window:${worldDirection}`) % 10 < 6
+    ? 'window'
+    : 'plain'
+}
+
+function _facadeDetailParts(direction, detailType, bodyY = 0) {
+  if (detailType === 'plain') {
+    return [_sideBox(direction, 0.58, 0.08, 0.028, 0.08 + bodyY, 0.535, 0xe4c28f, false)]
+  }
+
+  if (detailType === 'door') {
+    return [
+      _sideBox(direction, 0.36, 0.62, 0.038, -0.18 + bodyY, 0.546, 0x8a4d25, false),
+      _sideBox(direction, 0.42, 0.08, 0.044, 0.15 + bodyY, 0.552, 0x5a3422, false),
+    ]
+  }
+
+  return [
+    _sideBox(direction, 0.36, 0.34, 0.035, 0.1 + bodyY, 0.548, 0x79aec0, false),
+    _sideBox(direction, 0.44, 0.42, 0.026, 0.1 + bodyY, 0.544, 0xd8b878, false),
+    _sideBox(direction, 0.05, 0.42, 0.04, 0.1 + bodyY, 0.552, 0x5f3a23, false),
+  ]
+}
+
+function _balconyParts(direction, bodyY = 0) {
+  return [
+    _sideBox(direction, 0.64, 0.07, 0.28, -0.26 + bodyY, 0.66, 0xb97942, false),
+    _sideBox(direction, 0.64, 0.16, 0.045, -0.15 + bodyY, 0.8, 0x7a4b2b, false),
+  ]
+}
+
+function _sideBox(direction, width, height, depth, y, offset, color, colorable) {
+  const side = _sideTransform(direction)
+  const alongX = direction === 2 || direction === 3
+  return {
+    kind: 'box',
+    layer: 'facadeLayer',
+    size: alongX ? [width, height, depth] : [depth, height, width],
+    position: [side.x * offset, y, side.z * offset],
+    color,
+    roughness: 0.82,
+    colorable,
+  }
+}
+
+function _sidePosition(direction, offset, y) {
+  const side = _sideTransform(direction)
+  return [side.x * offset, y, side.z * offset]
+}
+
+function _isFoundationAsset(assetType) {
+  return assetType === 'foundation_arch' ||
+    assetType === 'foundation_solid' ||
+    assetType === 'foundation_wall' ||
+    assetType.startsWith('foundation_seawall_') ||
+    assetType === 'foundation_plaza_tile' ||
+    assetType === 'foundation_water_edge' ||
+    assetType === 'foundation_stairs' ||
+    assetType === 'foundation_rock_edge'
+}
+
+function _getSeawallFoundationParts(assetType, material, variant = 0, context = {}) {
+  if (assetType === 'foundation_wall') {
+    return [
+      { kind: 'box', size: [1.06, 1.0, 1.06], position: [0, 0, 0], color: material.foundationColor, colorable: true },
+    ]
+  }
+
+  if (assetType === 'foundation_stairs') {
+    return [
+      { kind: 'box', size: [1.06, 0.72, 1.06], position: [0, -0.14, 0], color: material.foundationColor, colorable: false },
+      { file: 'stairs-stone.glb', size: 1.08, position: [0, 0.36, 0], colorable: false },
+    ]
+  }
+
+  const exposed = _foundationOpenDirections(assetType, context)
+  const parts = [
+    { kind: 'box', size: [1.08, 0.84, 1.08], position: [0, -0.08, 0], color: material.foundationColor, roughness: 0.92, colorable: false },
+    { kind: 'box', size: [1.12, 0.08, 1.12], position: [0, 0.39, 0], color: material.copingColor, roughness: 0.9, colorable: false },
+    { file: _pick(material.foundationSurface, variant), size: 1.08, position: [0, 0.88, 0], colorable: false },
+  ]
+
+  if (assetType === 'foundation_plaza_tile' || exposed.length === 0) {
+    return parts
+  }
+
+  for (const direction of exposed) {
+    parts.push(..._seawallSideParts(direction, material, variant))
+  }
+
+  if (exposed.length >= 2) {
+    parts.push(..._seawallCornerCopingParts(exposed, material))
+  }
+
+  if (assetType === 'foundation_rock_edge' || material.rockEdge) {
+    const rockDirection = exposed[variant % exposed.length] ?? 2
+    if (assetType === 'foundation_rock_edge' || variant === 2) {
+      parts.push(_edgeDetailPart(_pick(material.rockEdge, variant), rockDirection))
+    }
+  }
+
+  return parts
+}
+
+function _getPierFoundationParts(material, variant = 0) {
+  const surface = _pick(material.foundationSurface, variant)
+  return [
+    { file: surface, size: 1.08, position: [0, 0.9, 0], colorable: false },
+    { kind: 'box', size: [1.08, 0.07, 1.08], position: [0, 0.39, 0], color: material.foundationColor, colorable: false },
+    { file: material.pillar, size: 0.88, position: [-0.43, 0, -0.43], colorable: false },
+    { file: material.pillar, size: 0.88, position: [0.43, 0, -0.43], colorable: false },
+    { file: material.pillar, size: 0.88, position: [-0.43, 0, 0.43], colorable: false },
+    { file: material.pillar, size: 0.88, position: [0.43, 0, 0.43], colorable: false },
+  ]
+}
+
+function _foundationOpenDirections(assetType, context = {}) {
+  if (Array.isArray(context.openDirections)) return context.openDirections
+  if (assetType === 'foundation_seawall_straight' || assetType === 'foundation_water_edge') return [2]
+  if (assetType === 'foundation_seawall_corner') return [2, 1]
+  if (assetType === 'foundation_seawall_inner_corner') return [0, 2]
+  if (assetType === 'foundation_seawall_end') return [0, 1, 2]
+  if (assetType === 'foundation_seawall_round' || assetType === 'foundation_arch') return [0, 1, 2, 3]
+  return []
+}
+
+function _seawallSideParts(direction, material, variant) {
+  const side = _sideTransform(direction)
+  const alongX = direction === 2 || direction === 3
+  return [
+    {
+      kind: 'box',
+      size: alongX ? [1.1, 0.66, 0.12] : [0.12, 0.66, 1.1],
+      position: [side.x * 0.53, -0.12, side.z * 0.53],
+      color: material.foundationDarkColor,
+      roughness: 0.94,
+      colorable: false,
+    },
+    {
+      kind: 'box',
+      size: alongX ? [1.08, 0.11, 0.16] : [0.16, 0.11, 1.08],
+      position: [side.x * 0.52, 0.36, side.z * 0.52],
+      color: material.copingColor,
+      roughness: 0.88,
+      colorable: false,
+    },
+    {
+      kind: 'arch',
+      width: 0.36,
+      height: 0.46,
+      position: [side.x * 0.594, -0.18, side.z * 0.594],
+      rotation: side.rotation,
+      color: 0x28343a,
+      colorable: false,
+    },
+  ]
+}
+
+function _seawallCornerCopingParts(exposed, material) {
+  const parts = []
+  const corners = [
+    { dirs: [2, 1], pos: [0.5, 0.41, 0.5] },
+    { dirs: [1, 3], pos: [0.5, 0.41, -0.5] },
+    { dirs: [3, 0], pos: [-0.5, 0.41, -0.5] },
+    { dirs: [0, 2], pos: [-0.5, 0.41, 0.5] },
+  ]
+  for (const corner of corners) {
+    if (corner.dirs.every(dir => exposed.includes(dir))) {
+      parts.push({
+        kind: 'box',
+        size: [0.2, 0.12, 0.2],
+        position: corner.pos,
+        color: material.copingColor,
+        roughness: 0.88,
+        colorable: false,
+      })
+    }
+  }
+  return parts
+}
+
+function _edgeDetailPart(file, direction) {
+  const side = _sideTransform(direction)
+  return {
+    file,
+    size: 0.34,
+    position: [side.x * 0.62, -0.45, side.z * 0.62],
+    rotation: side.rotation,
+    colorable: false,
+  }
+}
+
+function _sideTransform(direction) {
+  if (direction === 0) return { x: -1, z: 0, rotation: Math.PI / 2 }
+  if (direction === 1) return { x: 1, z: 0, rotation: -Math.PI / 2 }
+  if (direction === 3) return { x: 0, z: -1, rotation: Math.PI }
+  return { x: 0, z: 1, rotation: 0 }
+}
+
+function _worldDirectionToLocal(direction, rootRotation = 0) {
+  const turns = Math.round(rootRotation / (Math.PI / 2))
+  return _rotateDirection(direction, -turns)
+}
+
+function _rotateDirection(direction, turns) {
+  let normalized = direction
+  const count = ((turns % 4) + 4) % 4
+  for (let i = 0; i < count; i++) {
+    if (normalized === 2) normalized = 1
+    else if (normalized === 1) normalized = 3
+    else if (normalized === 3) normalized = 0
+    else normalized = 2
+  }
+  return normalized
+}
+
+function _contextHash(context = {}, salt = '') {
+  return _hashString([
+    context.cellId ?? 'cell',
+    context.height ?? 0,
+    context.materialFamily ?? DEFAULT_MATERIAL,
+    context.topologySignature ?? '',
+    salt,
+  ].join('|'))
+}
+
+function _hashString(input) {
+  let hash = 5381
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash) + input.charCodeAt(i)
+    hash = hash & hash
+  }
+  return Math.abs(hash)
+}
+
+function _roofOptionsForContext(material, assetType, context = {}) {
+  const regular = material.roofs[assetType]
+  if (!context.useHighRoof && !context.tower) return regular
+
+  if (assetType === 'roof_peak') return ['roof-high-point.glb', 'roof-high-point.glb', 'roof-window.glb']
+  if (assetType === 'roof_gable') return ['roof-high-gable.glb', 'roof-high-gable-detail.glb', 'roof-gable-detail.glb']
+  if (assetType === 'roof_flat') return ['roof-high-flat.glb', 'roof-high-flat.glb', 'roof-flat.glb']
+  if (assetType === 'roof_hip_corner') return ['roof-high-corner.glb', 'roof-high-corner.glb', 'roof-corner.glb']
+  if (assetType === 'roof_t_junction') return ['roof-high-gable-top.glb', 'roof-high-gable-detail.glb', 'roof-gable-top.glb']
+  return regular
 }
 
 async function _loadRawModel(fileName) {
@@ -445,17 +1363,141 @@ async function _buildCompositeModel(assetType, parts) {
   const group = new THREE.Group()
   group.name = `kenney_${assetType}`
   group.userData.assetType = assetType
+  const layers = _createLayerGroups(assetType)
 
   for (const partDef of parts) {
+    if (partDef.kind) {
+      const proceduralPart = _buildProceduralCompositePart(partDef, assetType)
+      _addPartToLayer(layers, proceduralPart, assetType, partDef)
+      continue
+    }
+
     const raw = await _loadRawModel(partDef.file)
     const part = _clonePrototype(raw)
-    normalizeToCell(part, partDef.size ?? 1)
+    normalizeToCell(part, partDef.size ?? 1, {
+      centerXZ: partDef.centerXZ !== false,
+    })
     part.position.add(new THREE.Vector3(...(partDef.position ?? [0, 0, 0])))
+    if (partDef.rotation) part.rotation.y += partDef.rotation
     _prepareModelMeshes(part, assetType, partDef.colorable)
-    group.add(part)
+    _addPartToLayer(layers, part, assetType, partDef)
   }
 
+  _attachLayers(group, layers)
   return group
+}
+
+function _buildCompositeModelFromCache(assetType, parts) {
+  const group = new THREE.Group()
+  group.name = `kenney_${assetType}`
+  group.userData.assetType = assetType
+  const layers = _createLayerGroups(assetType)
+
+  for (const partDef of parts) {
+    if (partDef.kind) {
+      const proceduralPart = _buildProceduralCompositePart(partDef, assetType)
+      _addPartToLayer(layers, proceduralPart, assetType, partDef)
+      continue
+    }
+
+    const raw = _rawModelCache.get(partDef.file)
+    if (!raw) return null
+
+    const part = _clonePrototype(raw)
+    normalizeToCell(part, partDef.size ?? 1, {
+      centerXZ: partDef.centerXZ !== false,
+    })
+    part.position.add(new THREE.Vector3(...(partDef.position ?? [0, 0, 0])))
+    if (partDef.rotation) part.rotation.y += partDef.rotation
+    _prepareModelMeshes(part, assetType, partDef.colorable)
+    _addPartToLayer(layers, part, assetType, partDef)
+  }
+
+  _attachLayers(group, layers)
+  return group
+}
+
+function _createLayerGroups(assetType) {
+  const names = ['foundationLayer', 'facadeLayer', 'roofLayer', 'propLayer']
+  return names.reduce((layers, name) => {
+    const layer = new THREE.Group()
+    layer.name = `${assetType}_${name}`
+    layer.userData.layer = name
+    layers.set(name, layer)
+    return layers
+  }, new Map())
+}
+
+function _addPartToLayer(layers, part, assetType, partDef = {}) {
+  const layerName = partDef.layer ?? _inferLayer(assetType)
+  part.userData.layer = layerName
+  const layer = layers.get(layerName) ?? layers.get('propLayer')
+  layer.add(part)
+}
+
+function _attachLayers(group, layers) {
+  for (const name of ['foundationLayer', 'facadeLayer', 'roofLayer', 'propLayer']) {
+    const layer = layers.get(name)
+    if (layer && layer.children.length > 0) {
+      group.add(layer)
+    }
+  }
+}
+
+function _inferLayer(assetType) {
+  if (_isFoundationAsset(assetType) || assetType === 'bridge_span') return 'foundationLayer'
+  if (assetType.startsWith('roof_')) return 'roofLayer'
+  if (assetType.startsWith('wall_')) return 'facadeLayer'
+  return 'propLayer'
+}
+
+function _buildProceduralCompositePart(partDef, assetType) {
+  let geometry
+  if (partDef.kind === 'box') {
+    geometry = new THREE.BoxGeometry(...partDef.size)
+  } else if (partDef.kind === 'cylinder') {
+    geometry = new THREE.CylinderGeometry(
+      partDef.radius ?? 0.08,
+      partDef.radiusBottom ?? partDef.radius ?? 0.08,
+      partDef.height ?? 1,
+      partDef.radialSegments ?? 8
+    )
+  } else if (partDef.kind === 'arch') {
+    const width = partDef.width ?? 0.36
+    const height = partDef.height ?? 0.46
+    const radius = width * 0.5
+    const straightHeight = Math.max(0.01, height - radius)
+    const shape = new THREE.Shape()
+    shape.moveTo(-width * 0.5, -height * 0.5)
+    shape.lineTo(width * 0.5, -height * 0.5)
+    shape.lineTo(width * 0.5, -height * 0.5 + straightHeight)
+    for (let i = 0; i <= 10; i++) {
+      const t = Math.PI * (i / 10)
+      const x = Math.cos(t) * radius
+      const y = -height * 0.5 + straightHeight + Math.sin(t) * radius
+      shape.lineTo(x, y)
+    }
+    shape.lineTo(-width * 0.5, -height * 0.5)
+    geometry = new THREE.ShapeGeometry(shape)
+  } else {
+    throw new Error(`Unknown composite part kind '${partDef.kind}' for ${assetType}`)
+  }
+
+  const material = new THREE.MeshStandardMaterial({
+    color: partDef.color ?? WALL_BODY_COLOR,
+    roughness: partDef.roughness ?? 0.86,
+    metalness: partDef.metalness ?? 0,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.name = `${assetType}_${partDef.kind}`
+  mesh.position.set(...(partDef.position ?? [0, 0, 0]))
+  if (partDef.rotation) mesh.rotation.y = partDef.rotation
+  mesh.castShadow = true
+  mesh.receiveShadow = partDef.kind !== 'arch'
+  mesh.frustumCulled = false
+  mesh.userData.isColorable = partDef.colorable ?? false
+  mesh.userData.layer = partDef.layer ?? _inferLayer(assetType)
+  return mesh
 }
 
 /**
@@ -536,7 +1578,9 @@ function _preparePlaceholder(object) {
   })
 }
 
-function normalizeToCell(object, targetSize = 1) {
+function normalizeToCell(object, targetSize = 1, options = {}) {
+  const { centerXZ = true, alignBottomY = -0.5 } = options
+
   object.updateMatrixWorld(true)
 
   const box = new THREE.Box3().setFromObject(object)
@@ -561,15 +1605,20 @@ function normalizeToCell(object, targetSize = 1) {
   box2.getCenter(center2)
   min2.copy(box2.min)
 
-  object.position.x -= center2.x
-  object.position.z -= center2.z
-  object.position.y -= min2.y + 0.5
+  if (centerXZ) {
+    object.position.x -= center2.x
+    object.position.z -= center2.z
+  }
+  object.position.y += alignBottomY - min2.y
 }
 
 function _clonePrototype(prototype) {
   const clone = SkeletonUtils.clone(prototype)
   clone.traverse((child) => {
     if (!child.isMesh || !child.material) return
+    if (child.geometry) {
+      child.geometry = child.geometry.clone()
+    }
     if (Array.isArray(child.material)) {
       child.material = child.material.map(material => material.clone())
     } else {

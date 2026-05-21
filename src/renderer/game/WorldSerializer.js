@@ -59,6 +59,10 @@ const WorldSerializer = {
       },
       palette: {
         activeColor: paletteState.activeColor ?? '#F5DEB3',
+        activeMaterial: paletteState.activeMaterial ?? 'stone_quay',
+        activeCategory: paletteState.activeCategory ?? 'auto',
+        activeAssetId: paletteState.activeAssetId ?? 'auto',
+        autoMode: paletteState.autoMode ?? true,
         colors: paletteState.colors ?? [],
       },
       cells: gridManager.getAllCells().map(cell => cell.toJSON()),

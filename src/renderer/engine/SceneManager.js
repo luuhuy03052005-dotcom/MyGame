@@ -18,6 +18,9 @@ import { PostProcessing } from './PostProcessing.js'
 let scene = null
 let renderer = null
 let camera = null
+let canvasRef = null
+let lastRenderWidth = 0
+let lastRenderHeight = 0
 
 const SceneManager = {
   /**
@@ -26,6 +29,8 @@ const SceneManager = {
    * @param {HTMLCanvasElement} canvas
    */
   init(canvas) {
+    canvasRef = canvas
+
     // === Scene ===
     scene = new THREE.Scene()
     scene.background = null  // Skybox sets background
@@ -35,7 +40,7 @@ const SceneManager = {
     // far = 10000: SkySystem creates sky sphere radius 1500, far must exceed this
     camera = new THREE.PerspectiveCamera(
       45,
-      canvas.clientWidth / canvas.clientHeight,
+      _getViewportSize().width / _getViewportSize().height,
       0.1,
       10000
     )
@@ -47,7 +52,8 @@ const SceneManager = {
       canvas,
       antialias: false, // CLARIFICATION-02: Tắt antialias của WebGLRenderer vì đã có FXAAShader xử lý
     })
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight)
+    const initialSize = _getViewportSize()
+    renderer.setSize(initialSize.width, initialSize.height, false)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     // Output color space: SRGBColorSpace cho màu sắc đúng
@@ -75,14 +81,13 @@ const SceneManager = {
 
     // === Resize handler ===
     // Cập nhật camera aspect và renderer size khi resize window
-    window.addEventListener('resize', () => {
-      const w = canvas.clientWidth
-      const h = canvas.clientHeight
-      camera.aspect = w / h
-      camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
-      PostProcessing.resize(w, h)
-    })
+    _syncRendererSize()
+    window.addEventListener('resize', _syncRendererSize)
+    if (window.ResizeObserver) {
+      const resizeObserver = new ResizeObserver(_syncRendererSize)
+      resizeObserver.observe(canvas)
+    }
+    requestAnimationFrame(_syncRendererSize)
 
     console.log('[SceneManager] Initialized')
   },
@@ -93,6 +98,7 @@ const SceneManager = {
 
   /** Render 1 frame — gọi từ RenderLoop */
   render() {
+    _syncRendererSize()
     if (PostProcessing.isEnabled()) {
       PostProcessing.render()
     } else {
@@ -114,6 +120,39 @@ const SceneManager = {
   setBackground(hexColor) {
     scene.background = new THREE.Color(hexColor)
   },
+}
+
+function _getViewportSize() {
+  const rect = canvasRef?.getBoundingClientRect()
+  const width = Math.max(
+    1,
+    Math.floor(window.innerWidth || 0),
+    Math.floor(rect?.width || 0),
+    Math.floor(canvasRef?.clientWidth || 0)
+  )
+  const height = Math.max(
+    1,
+    Math.floor(window.innerHeight || 0),
+    Math.floor(rect?.height || 0),
+    Math.floor(canvasRef?.clientHeight || 0)
+  )
+
+  return { width, height }
+}
+
+function _syncRendererSize() {
+  if (!renderer || !camera || !canvasRef) return
+
+  const { width, height } = _getViewportSize()
+  if (width === lastRenderWidth && height === lastRenderHeight) return
+
+  lastRenderWidth = width
+  lastRenderHeight = height
+
+  camera.aspect = width / height
+  camera.updateProjectionMatrix()
+  renderer.setSize(width, height, false)
+  PostProcessing.resize(width, height)
 }
 
 export { SceneManager }

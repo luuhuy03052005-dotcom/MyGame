@@ -2,7 +2,8 @@
 node_modules/
 dist/
 .vite/
-
+screenshots/
+libaries-repo-github-resources/
 # Electron builder output
 dist-electron/
 release/

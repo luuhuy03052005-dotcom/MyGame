@@ -45,6 +45,19 @@ let ruleEngine = null
 let assetManager = null
 let undoStack = null
 let activeColor = '#F5DEB3'  // màu mặc định — Wheat
+let activeMaterial = 'stone_quay'
+let activeCategory = 'auto'
+let activeAssetId = 'auto'
+let activeAutoMode = true
+
+const FOUNDATION_MATERIALS = new Set(['stone_quay', 'stone_plaza', 'rock_edge', 'harbor_pier'])
+const BUILDING_MATERIAL_ALIASES = {
+  stone_quay: 'plaster',
+  stone_plaza: 'stone',
+  rock_edge: 'stone',
+  harbor_pier: 'wood',
+  coast: 'plaster',
+}
 
 // Buildable objects cho raycaster — water + tất cả block meshes
 const _buildableObjects = []
@@ -81,7 +94,7 @@ const BuildController = {
    * @param {string} [color] - override color (optional, dùng activeColor nếu không có)
    * @returns {import('./Cell.js').Cell | null}
    */
-  build(gridPos, color) {
+  build(gridPos, color, material) {
     const { x, z } = gridPos
 
     // Xác định y: stack lên trên cell cao nhất tại cột x,z
@@ -95,13 +108,14 @@ const BuildController = {
     }
 
     const cellColor = color || activeColor
+    const cellMaterial = _resolveMaterialForCell(y, material || activeMaterial)
 
     // Lưu snapshot của neighbors trước khi add (cho undo)
-    const neighbors6 = gridManager.getNeighbors(x, y, z)
-    const affectedSnapshots = _snapshotNeighbors(neighbors6)
+    const affectedSnapshots = _snapshotCells(_collectCellsForRefresh(x, y, z))
 
     // Thêm cell vào grid
     const cell = gridManager.addCell(x, y, z, cellColor)
+    cell.material = cellMaterial
 
     // Resolve assetType + rotation cho cell mới VÀ tất cả neighbors bị ảnh hưởng
     _resolveAndRespawn(cell)
@@ -136,8 +150,7 @@ const BuildController = {
     const { y } = topCell
 
     // Snapshot trước khi xóa
-    const neighbors6 = gridManager.getNeighbors(x, y, z)
-    const affectedSnapshots = _snapshotNeighbors(neighbors6)
+    const affectedSnapshots = _snapshotCells(_collectCellsForRefresh(x, y, z))
 
     // Xóa mesh khỏi scene
     _removeMesh(topCell)
@@ -179,8 +192,9 @@ const BuildController = {
       }
     } else if (command.type === 'remove') {
       // Undo remove → re-add cell
-      const { x, y, z, color } = command.cell
+      const { x, y, z, color, material } = command.cell
       const cell = gridManager.addCell(x, y, z, color)
+      cell.material = material ?? _resolveMaterialForCell(y)
       cell.assetType = command.cell.assetType
       cell.rotation = command.cell.rotation
       _spawnMesh(cell)
@@ -207,8 +221,9 @@ const BuildController = {
 
     if (command.type === 'add') {
       // Redo add → re-add cell
-      const { x, y, z, color } = command.cell
+      const { x, y, z, color, material } = command.cell
       const cell = gridManager.addCell(x, y, z, color)
+      cell.material = material ?? _resolveMaterialForCell(y)
       _resolveAndRespawn(cell)
     } else if (command.type === 'remove') {
       // Redo remove → delete cell
@@ -238,11 +253,42 @@ const BuildController = {
 
   getActiveColor: () => activeColor,
 
+  setActiveMaterial(materialId) {
+    activeMaterial = materialId || 'stone_quay'
+  },
+
+  getActiveMaterial: () => activeMaterial,
+
+  setBuildSelection(selection = {}) {
+    activeMaterial = selection.material || activeMaterial || 'stone_quay'
+    activeCategory = selection.category || 'auto'
+    activeAssetId = selection.assetId || 'auto'
+    activeAutoMode = selection.autoMode !== false
+  },
+
+  getBuildSelection: () => ({
+    material: activeMaterial,
+    category: activeCategory,
+    assetId: activeAssetId,
+    autoMode: activeAutoMode,
+  }),
+
   /**
    * Trả về danh sách objects cho raycaster.
    * Gồm: tất cả block meshes (KHÔNG gồm bridge — overlay, không pickable).
    */
   getBuildableObjects: () => _buildableObjects,
+
+  registerBuildableObject(object) {
+    if (object && !_buildableObjects.includes(object)) {
+      _buildableObjects.push(object)
+    }
+  },
+
+  clearBuildableObjects() {
+    _buildableObjects.length = 0
+    _bridgeMeshes.clear()
+  },
 }
 
 // ===== Internal Helpers =====
@@ -259,13 +305,23 @@ function _onBuildRightClick(event) {
   BuildController.delete(gridPos)
 }
 
+function _resolveMaterialForCell(y, requestedMaterial = activeMaterial) {
+  const requested = requestedMaterial || 'stone_quay'
+
+  if (y === 0) {
+    return FOUNDATION_MATERIALS.has(requested) ? requested : 'stone_quay'
+  }
+
+  return BUILDING_MATERIAL_ALIASES[requested] ?? requested
+}
+
 /**
  * Resolve và spawn/update mesh cho một cell.
  */
 function _resolveAndRespawn(cell) {
   const neighbors = gridManager.getNeighbors(cell.x, cell.y, cell.z)
   const result = ruleEngine.resolve(cell, neighbors)
-  cell.assetType = result.assetType
+  cell.assetType = _applyGrammarOverrides(cell, neighbors, result.assetType)
   cell.rotation = result.rotation
 
   // Xóa mesh cũ nếu có
@@ -280,22 +336,7 @@ function _resolveAndRespawn(cell) {
  * Cần gọi sau mỗi add/delete vì assetType của neighbors có thể thay đổi.
  */
 function _resolveNeighborsOf(x, y, z) {
-  // CLARIFICATION-03: Re-resolve toàn bộ 5 cột: chính nó (x, z) và 4 hướng lân cận
-  const columns = [
-    [x, z],
-    [x + 1, z],
-    [x - 1, z],
-    [x, z + 1],
-    [x, z - 1]
-  ]
-
-  const cellsToResolve = []
-  for (const cell of gridManager.getAllCells()) {
-    const match = columns.some(([cx, cz]) => cell.x === cx && cell.z === cz)
-    if (match) {
-      cellsToResolve.push(cell)
-    }
-  }
+  const cellsToResolve = _collectCellsForRefresh(x, y, z)
 
   // Sắp xếp từ dưới lên trên (y tăng dần) để cấu trúc nền tảng được định hình trước
   cellsToResolve.sort((a, b) => a.y - b.y)
@@ -305,12 +346,37 @@ function _resolveNeighborsOf(x, y, z) {
   }
 }
 
+function _collectCellsForRefresh(x, y, z) {
+  const columns = new Set()
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      columns.add(`${x + dx}_${z + dz}`)
+    }
+  }
+
+  const cellsToResolve = []
+  for (const cell of gridManager.getAllCells()) {
+    if (columns.has(`${cell.x}_${cell.z}`)) {
+      cellsToResolve.push(cell)
+    }
+  }
+
+  const above = gridManager.getCell(x, y + 1, z)
+  const below = gridManager.getCell(x, y - 1, z)
+  if (above && !cellsToResolve.includes(above)) cellsToResolve.push(above)
+  if (below && !cellsToResolve.includes(below)) cellsToResolve.push(below)
+
+  return cellsToResolve
+}
+
 /**
  * Spawn mesh từ AssetManager, add vào scene, chạy scale-in animation.
  * Theo TASKS.md P5-05: 0 → 1 trong 150ms, easeOutBack
  */
 function _spawnMesh(cell) {
-  const proto = assetManager.get(cell.assetType)
+  const neighbors = gridManager.getNeighbors(cell.x, cell.y, cell.z)
+  const grammar = _buildGrammarContext(cell, neighbors)
+  const proto = assetManager.get(cell.assetType, cell.material, cell.id, grammar)
 
   // Apply cell color
   _applyColor(proto, cell.color)
@@ -363,6 +429,105 @@ function _spawnMesh(cell) {
       easing: 'elasticOut',
     },
   ])
+}
+
+function _applyGrammarOverrides(cell, neighbors, assetType) {
+  if (assetType !== 'wall_flat' && assetType !== 'wall_window') return assetType
+  if (!_hasExteriorFace(neighbors)) return 'wall_flat'
+
+  const access = _hasAccessFromExterior(cell, neighbors)
+  if (access && _grammarHash(cell, 'door') % 5 === 0) {
+    return 'wall_door'
+  }
+
+  if (assetType === 'wall_window' || _grammarHash(cell, 'window') % 4 === 0) {
+    return 'wall_window'
+  }
+
+  return 'wall_flat'
+}
+
+function _buildGrammarContext(cell, neighbors) {
+  const openDirections = _getOpenDirections(neighbors)
+  const primaryOpenDirection = openDirections[0] ?? 2
+  const hasTop = Boolean(neighbors.top)
+  const hasBottom = Boolean(neighbors.bottom)
+  const topologySignature = _topologySignature(neighbors)
+
+  return {
+    cellId: cell.id,
+    height: cell.y,
+    materialFamily: cell.material ?? 'stone_quay',
+    topologySignature,
+    rotation: cell.rotation,
+    openDirections,
+    primaryOpenDirection,
+    isExterior: openDirections.length > 0,
+    hasSupport: cell.y === 0 || hasBottom,
+    topExposed: !hasTop,
+    allowDoor: _hasAccessFromExterior(cell, neighbors),
+    allowWindow: cell.y > 0 && openDirections.length > 0,
+    allowBalcony: cell.y >= 2 && hasBottom && openDirections.length > 0 && _grammarHash(cell, 'balcony') % 3 === 0,
+    useHighRoof: !hasTop && cell.y >= 3,
+    tower: cell.y >= 3 && _countHorizontalNeighbors(neighbors) <= 1,
+  }
+}
+
+function _hasExteriorFace(neighbors) {
+  return _getOpenDirections(neighbors).length > 0
+}
+
+function _hasAccessFromExterior(cell, neighbors) {
+  if (cell.y !== 1) return false
+  const openDirections = _getOpenDirections(neighbors)
+  if (openDirections.length === 0) return false
+  return Boolean(neighbors.bottom)
+}
+
+function _getOpenDirections(neighbors) {
+  const open = []
+  if (!neighbors.left) open.push(0)
+  if (!neighbors.right) open.push(1)
+  if (!neighbors.front) open.push(2)
+  if (!neighbors.back) open.push(3)
+  return open
+}
+
+function _directionOffset(direction) {
+  if (direction === 0) return [-1, 0]
+  if (direction === 1) return [1, 0]
+  if (direction === 2) return [0, 1]
+  return [0, -1]
+}
+
+function _countHorizontalNeighbors(neighbors) {
+  let count = 0
+  if (neighbors.left) count++
+  if (neighbors.right) count++
+  if (neighbors.front) count++
+  if (neighbors.back) count++
+  return count
+}
+
+function _topologySignature(neighbors) {
+  return [
+    neighbors.top ? 'T1' : 'T0',
+    neighbors.bottom ? 'B1' : 'B0',
+    neighbors.left ? 'L1' : 'L0',
+    neighbors.right ? 'R1' : 'R0',
+    neighbors.front ? 'F1' : 'F0',
+    neighbors.back ? 'K1' : 'K0',
+  ].join('_')
+}
+
+function _grammarHash(cell, salt) {
+  const input = `${cell.id}:${cell.material ?? 'stone_quay'}:${salt}`
+  let hash = 5381
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash) + input.charCodeAt(i)
+    hash = hash & hash
+  }
+  return Math.abs(hash)
 }
 
 /**
@@ -528,11 +693,14 @@ function _checkAndRenderBridge(compA, compB, y) {
       // Không spawn bridge nếu đã có cell tại vị trí đó
       if (gridManager.hasCell(bridgeX, y, bridgeZ)) continue
 
+      const bridgeMaterial = _bridgeMaterialFor(cellA, cellB)
+      if (!bridgeMaterial) continue
+
       // Tạo bridge mesh (overlay)
       const key = `${Math.min(cellA.x,cellB.x)}_${y}_${Math.min(cellA.z,cellB.z)}__${Math.max(cellA.x,cellB.x)}_${y}_${Math.max(cellA.z,cellB.z)}`
       if (_bridgeMeshes.has(key)) continue
 
-      const bridgeMesh = assetManager.get('bridge_span')
+      const bridgeMesh = assetManager.get('bridge_span', bridgeMaterial, key)
       bridgeMesh.position.set(bridgeX * CELL_SIZE, y * CELL_HEIGHT + CELL_HEIGHT / 2, bridgeZ * CELL_SIZE)
       bridgeMesh.rotation.y = rotation
       bridgeMesh.name = 'bridgeOverlay'
@@ -547,16 +715,27 @@ function _checkAndRenderBridge(compA, compB, y) {
   }
 }
 
-function _snapshotNeighbors(neighbors) {
+function _bridgeMaterialFor(cellA, cellB) {
+  if (
+    activeMaterial === 'harbor_pier' ||
+    cellA.material === 'harbor_pier' ||
+    cellB.material === 'harbor_pier'
+  ) {
+    return 'harbor_pier'
+  }
+  return null
+}
+
+function _snapshotCells(cells) {
   const snapshots = []
-  for (const cell of Object.values(neighbors)) {
-    if (cell) {
-      snapshots.push({
-        cellId: cell.id,
-        assetType: cell.assetType,
-        rotation: cell.rotation,
-      })
-    }
+  for (const cell of cells) {
+    if (!cell) continue
+    snapshots.push({
+      cellId: cell.id,
+      assetType: cell.assetType,
+      rotation: cell.rotation,
+      material: cell.material,
+    })
   }
   return snapshots
 }
@@ -570,6 +749,7 @@ function _restoreSnapshots(snapshots) {
 
     cell.assetType = snap.assetType
     cell.rotation = snap.rotation
+    if (snap.material) cell.material = snap.material
 
     // Respawn với assetType đã restore
     if (cell.mesh) _removeMesh(cell)

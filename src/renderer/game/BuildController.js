@@ -35,6 +35,7 @@ import * as THREE from 'three'
 import { RenderLoop }  from '../engine/RenderLoop.js'
 import { AudioSystem } from '../engine/AudioSystem.js'
 import { ParticleSystem } from '../engine/ParticleSystem.js'
+import { BuildingGrammarEngine } from './BuildingGrammarEngine.js'
 
 const CELL_SIZE = 1
 const CELL_HEIGHT = 1
@@ -321,8 +322,10 @@ function _resolveMaterialForCell(y, requestedMaterial = activeMaterial) {
 function _resolveAndRespawn(cell) {
   const neighbors = gridManager.getNeighbors(cell.x, cell.y, cell.z)
   const result = ruleEngine.resolve(cell, neighbors)
-  cell.assetType = _applyGrammarOverrides(cell, neighbors, result.assetType)
-  cell.rotation = result.rotation
+  const recipe = BuildingGrammarEngine.resolveCell(cell, gridManager, _buildContextSelection(cell))
+  cell.visualRecipe = recipe
+  cell.assetType = recipe.primaryAssetType ?? _applyGrammarOverrides(cell, neighbors, result.assetType)
+  cell.rotation = recipe.primaryRotation ?? result.rotation
 
   // Xóa mesh cũ nếu có
   if (cell.mesh) _removeMesh(cell)
@@ -347,26 +350,7 @@ function _resolveNeighborsOf(x, y, z) {
 }
 
 function _collectCellsForRefresh(x, y, z) {
-  const columns = new Set()
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dz = -1; dz <= 1; dz++) {
-      columns.add(`${x + dx}_${z + dz}`)
-    }
-  }
-
-  const cellsToResolve = []
-  for (const cell of gridManager.getAllCells()) {
-    if (columns.has(`${cell.x}_${cell.z}`)) {
-      cellsToResolve.push(cell)
-    }
-  }
-
-  const above = gridManager.getCell(x, y + 1, z)
-  const below = gridManager.getCell(x, y - 1, z)
-  if (above && !cellsToResolve.includes(above)) cellsToResolve.push(above)
-  if (below && !cellsToResolve.includes(below)) cellsToResolve.push(below)
-
-  return cellsToResolve
+  return BuildingGrammarEngine.resolveAffectedCells({ x, y, z }, gridManager)
 }
 
 /**
@@ -375,7 +359,12 @@ function _collectCellsForRefresh(x, y, z) {
  */
 function _spawnMesh(cell) {
   const neighbors = gridManager.getNeighbors(cell.x, cell.y, cell.z)
-  const grammar = _buildGrammarContext(cell, neighbors)
+  const recipe = cell.visualRecipe ?? BuildingGrammarEngine.resolveCell(cell, gridManager, _buildContextSelection(cell))
+  cell.visualRecipe = recipe
+  cell.assetType = recipe.primaryAssetType ?? cell.assetType
+  cell.rotation = recipe.primaryRotation ?? cell.rotation
+
+  const grammar = _buildGrammarContext(cell, neighbors, recipe)
   const proto = assetManager.get(cell.assetType, cell.material, cell.id, grammar)
 
   // Apply cell color
@@ -447,7 +436,7 @@ function _applyGrammarOverrides(cell, neighbors, assetType) {
   return 'wall_flat'
 }
 
-function _buildGrammarContext(cell, neighbors) {
+function _buildGrammarContext(cell, neighbors, recipe = null) {
   const openDirections = _getOpenDirections(neighbors)
   const primaryOpenDirection = openDirections[0] ?? 2
   const hasTop = Boolean(neighbors.top)
@@ -457,19 +446,36 @@ function _buildGrammarContext(cell, neighbors) {
   return {
     cellId: cell.id,
     height: cell.y,
-    materialFamily: cell.material ?? 'stone_quay',
+    materialFamily: recipe?.materialFamily ?? cell.material ?? 'stone_quay',
+    foundationStyle: recipe?.foundationStyle ?? (cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay'),
     topologySignature,
     rotation: cell.rotation,
-    openDirections,
-    primaryOpenDirection,
+    openDirections: recipe?.openDirections ?? openDirections,
+    primaryOpenDirection: recipe?.primaryOpenDirection ?? primaryOpenDirection,
     isExterior: openDirections.length > 0,
     hasSupport: cell.y === 0 || hasBottom,
     topExposed: !hasTop,
-    allowDoor: _hasAccessFromExterior(cell, neighbors),
-    allowWindow: cell.y > 0 && openDirections.length > 0,
-    allowBalcony: cell.y >= 2 && hasBottom && openDirections.length > 0 && _grammarHash(cell, 'balcony') % 3 === 0,
-    useHighRoof: !hasTop && cell.y >= 3,
-    tower: cell.y >= 3 && _countHorizontalNeighbors(neighbors) <= 1,
+    allowDoor: recipe?.allowDoor ?? _hasAccessFromExterior(cell, neighbors),
+    allowWindow: recipe?.allowWindow ?? (cell.y > 0 && openDirections.length > 0),
+    allowBalcony: recipe?.allowBalcony ?? (cell.y >= 2 && hasBottom && openDirections.length > 0 && _grammarHash(cell, 'balcony') % 3 === 0),
+    useHighRoof: recipe?.useHighRoof ?? (!hasTop && cell.y >= 3),
+    tower: recipe?.tower ?? (cell.y >= 3 && _countHorizontalNeighbors(neighbors) <= 1),
+    visualRecipe: recipe,
+    foundationLayer: recipe?.foundationLayer ?? [],
+    facadeLayer: recipe?.facadeLayer ?? [],
+    roofLayer: recipe?.roofLayer ?? [],
+    propLayer: recipe?.propLayer ?? [],
+  }
+}
+
+function _buildContextSelection(cell) {
+  return {
+    activeMaterial,
+    activeCategory,
+    activeAssetId,
+    autoMode: activeAutoMode,
+    materialFamily: cell.y === 0 ? cell.material : _resolveMaterialForCell(cell.y, cell.material),
+    foundationStyle: cell.y === 0 && cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay',
   }
 }
 
@@ -750,6 +756,7 @@ function _restoreSnapshots(snapshots) {
     cell.assetType = snap.assetType
     cell.rotation = snap.rotation
     if (snap.material) cell.material = snap.material
+    cell.visualRecipe = BuildingGrammarEngine.resolveCell(cell, gridManager, _buildContextSelection(cell))
 
     // Respawn với assetType đã restore
     if (cell.mesh) _removeMesh(cell)

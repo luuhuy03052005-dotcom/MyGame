@@ -30,6 +30,7 @@ import { NuggetEnvironmentManager as CoastletEnvironmentManager } from './world/
 // Game
 import { GridManager }          from './game/GridManager.js'
 import { ProceduralRuleEngine } from './game/ProceduralRuleEngine.js'
+import { BuildingGrammarEngine } from './game/BuildingGrammarEngine.js'
 import { BuildController }      from './game/BuildController.js'
 import { UndoRedoStack }        from './game/UndoRedoStack.js'
 import { WorldSerializer }      from './game/WorldSerializer.js'
@@ -393,7 +394,19 @@ function _loadWorldFromJson(jsonString) {
     ProceduralRuleEngine.resolveAll(GridManager, (cell) => {
       if (!cell.mesh) {
         const neighbors = GridManager.getNeighbors(cell.x, cell.y, cell.z)
-        const mesh = AssetManager.get(cell.assetType, cell.material, cell.id, _buildLoadGrammarContext(cell, neighbors))
+        const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager, {
+          activeMaterial: data.palette?.activeMaterial ?? cell.material,
+          activeCategory: data.palette?.activeCategory ?? 'auto',
+          activeAssetId: data.palette?.activeAssetId ?? 'auto',
+          autoMode: data.palette?.autoMode !== false,
+          materialFamily: cell.material,
+          foundationStyle: cell.y === 0 && cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay',
+        })
+        cell.visualRecipe = recipe
+        cell.assetType = recipe.primaryAssetType ?? cell.assetType
+        cell.rotation = recipe.primaryRotation ?? cell.rotation
+
+        const mesh = AssetManager.get(cell.assetType, cell.material, cell.id, _buildLoadGrammarContext(cell, neighbors, recipe))
         _applyColorToMesh(mesh, cell.color)
         mesh.position.set(cell.x, cell.y + 0.5, cell.z)
         mesh.rotation.y = cell.rotation
@@ -502,26 +515,32 @@ function _resolveLoadedMaterial(y, activeMaterial = 'stone_quay') {
   return aliases[activeMaterial] ?? activeMaterial ?? 'plaster'
 }
 
-function _buildLoadGrammarContext(cell, neighbors) {
+function _buildLoadGrammarContext(cell, neighbors, recipe = null) {
   const openDirections = _loadOpenDirections(neighbors)
   const hasTop = Boolean(neighbors.top)
   const hasBottom = Boolean(neighbors.bottom)
   return {
     cellId: cell.id,
     height: cell.y,
-    materialFamily: cell.material ?? 'stone_quay',
+    materialFamily: recipe?.materialFamily ?? cell.material ?? 'stone_quay',
+    foundationStyle: recipe?.foundationStyle ?? (cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay'),
     topologySignature: _loadTopologySignature(neighbors),
     rotation: cell.rotation,
-    openDirections,
-    primaryOpenDirection: openDirections[0] ?? 2,
+    openDirections: recipe?.openDirections ?? openDirections,
+    primaryOpenDirection: recipe?.primaryOpenDirection ?? openDirections[0] ?? 2,
     isExterior: openDirections.length > 0,
     hasSupport: cell.y === 0 || hasBottom,
     topExposed: !hasTop,
-    allowDoor: cell.y === 1 && hasBottom && openDirections.length > 0,
-    allowWindow: cell.y > 0 && openDirections.length > 0,
-    allowBalcony: cell.y >= 2 && hasBottom && openDirections.length > 0,
-    useHighRoof: !hasTop && cell.y >= 3,
-    tower: !hasTop && cell.y >= 3,
+    allowDoor: recipe?.allowDoor ?? (cell.y === 1 && hasBottom && openDirections.length > 0),
+    allowWindow: recipe?.allowWindow ?? (cell.y > 0 && openDirections.length > 0),
+    allowBalcony: recipe?.allowBalcony ?? (cell.y >= 2 && hasBottom && openDirections.length > 0),
+    useHighRoof: recipe?.useHighRoof ?? (!hasTop && cell.y >= 3),
+    tower: recipe?.tower ?? (!hasTop && cell.y >= 3),
+    visualRecipe: recipe,
+    foundationLayer: recipe?.foundationLayer ?? [],
+    facadeLayer: recipe?.facadeLayer ?? [],
+    roofLayer: recipe?.roofLayer ?? [],
+    propLayer: recipe?.propLayer ?? [],
   }
 }
 

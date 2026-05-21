@@ -1060,9 +1060,10 @@ function _getFacadeParts(assetType, material, variant = 0, context = {}, options
 
     parts.push(..._facadeDetailParts(localDirection, detailType, bodyY))
 
-    const shouldBalcony = context.allowBalcony &&
+    const shouldBalcony = detailType === 'balcony' || (context.allowBalcony &&
       detailType !== 'door' &&
       _contextHash(context, `balcony:${worldDirection}`) % 4 === 0
+    )
     if (shouldBalcony) {
       parts.push(..._balconyParts(localDirection, bodyY))
       const balconyFile = _pick(material.balcony, variant)
@@ -1085,11 +1086,17 @@ function _getFacadeParts(assetType, material, variant = 0, context = {}, options
 
 function _facadeModelFile(detailType, material, variant) {
   if (detailType === 'door') return material.wallDoor
+  if (detailType === 'balcony') return _pick(material.wallWindow, variant)
   if (detailType === 'window') return _pick(material.wallWindow, variant)
   return material.wall
 }
 
 function _facadeDetailType(assetType, context, worldDirection, index) {
+  const recipeFacade = _recipeFacadeForDirection(context, worldDirection)
+  if (recipeFacade?.detail) {
+    return recipeFacade.detail
+  }
+
   if (
     context.allowDoor &&
     (assetType === 'wall_door' || (worldDirection === context.primaryOpenDirection && _contextHash(context, `door:${worldDirection}`) % 5 === 0))
@@ -1105,6 +1112,19 @@ function _facadeDetailType(assetType, context, worldDirection, index) {
   return _contextHash(context, `window:${worldDirection}`) % 10 < 6
     ? 'window'
     : 'plain'
+}
+
+function _recipeFacadeForDirection(context = {}, direction) {
+  if (!Array.isArray(context.facadeLayer)) return null
+  const side = _worldDirectionToSide(direction)
+  return context.facadeLayer.find(item => item.side === side) ?? null
+}
+
+function _worldDirectionToSide(direction) {
+  if (direction === 0) return 'west'
+  if (direction === 1) return 'east'
+  if (direction === 3) return 'north'
+  return 'south'
 }
 
 function _facadeDetailParts(direction, detailType, bodyY = 0) {

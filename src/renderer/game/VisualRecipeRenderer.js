@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { getAssetDefinition } from '../assets/BuildingAssetRegistry.js'
+import { getPrefabAsset, getSemanticAsset } from '../assets/KitRegistry.js'
 
-const LAYER_NAMES = ['foundationLayer', 'surfaceLayer', 'facadeLayer', 'roofLayer', 'propLayer']
+const LAYER_NAMES = ['foundationLayer', 'surfaceLayer', 'prefabLayer', 'facadeLayer', 'roofLayer', 'propLayer']
 
 const COLORS = {
   stone: 0xa9a698,
@@ -57,6 +58,7 @@ function createCellGroup(cell, recipe, assetManager) {
   const layers = _createLayers()
   _renderFoundation(layers.foundationLayer, recipe.foundationLayer, assetManager, cell)
   _renderSurface(layers.surfaceLayer, recipe.surfaceLayer ?? [], assetManager, cell)
+  _renderPrefabs(layers.prefabLayer, recipe.prefabLayer ?? [], assetManager)
   _renderFacades(layers.facadeLayer, recipe.facadeLayer, assetManager, cell, recipe)
   _renderRoofs(layers.roofLayer, recipe.roofLayer, assetManager, cell)
   _renderProps(layers.propLayer, recipe.propLayer, assetManager, cell)
@@ -176,12 +178,14 @@ function _renderSurface(layer, surfaceLayer, assetManager, cell) {
     const [x, , z] = item.positionOffset ?? [0, 0, 0]
     layer.add(_surfaceUnderlay(item, x, z))
 
-    const surface = _raw(assetManager, _surfaceFile(item), {
+    const kitId = _surfaceKitId(item, assetManager)
+    const surface = _raw(assetManager, _surfaceFile(item, kitId), {
       assetType: item.assetType,
       size: _surfaceSize(item),
       colorable: false,
       materialRole: item.surfaceRole === 'quay' ? 'surfaceQuay' : 'surfaceStone',
       alignBottomY: SURFACE_RAW_BOTTOM_Y,
+      kitId,
     })
     surface.position.set(x, 0, z)
     surface.rotation.y = item.rotation ?? 0
@@ -189,6 +193,27 @@ function _renderSurface(layer, surfaceLayer, assetManager, cell) {
     layer.add(surface)
 
     _addSurfaceAccents(layer, item)
+  }
+}
+
+function _renderPrefabs(layer, prefabLayer, assetManager) {
+  for (const item of prefabLayer) {
+    const kitId = item.kitId ?? 'kenney-city-suburban'
+    const fileName = item.fileName ?? getPrefabAsset(item.assetType, kitId)
+    if (!fileName) continue
+
+    const prefab = _raw(assetManager, fileName, {
+      assetType: item.assetType,
+      size: item.scale ?? 1.08,
+      colorable: false,
+      materialRole: 'prefab',
+      alignBottomY: -0.5,
+      kitId,
+    })
+    prefab.position.set(...(item.positionOffset ?? [0, 0, 0]))
+    prefab.rotation.y = item.rotation ?? 0
+    prefab.userData.materialRole = 'prefab'
+    layer.add(prefab)
   }
 }
 
@@ -511,8 +536,9 @@ function _addProceduralRoof(layer, item) {
   const isHigh = item.assetType?.startsWith('roof_high')
   const roofColor = isHigh ? 0x4fb9a0 : _roofColor(item)
   const eaveColor = 0x355d58
+  const footprint = _roofFootprint(item)
 
-  layer.add(_box('roof_eave_slab', [1.02, 0.055, 1.02], [0, 0.38, 0], eaveColor, {
+  layer.add(_box('roof_eave_slab', [footprint.eaveX, 0.055, footprint.eaveZ], [0, 0.38, 0], eaveColor, {
     materialRole: 'roof',
     colorable: false,
     roughness: 0.82,
@@ -528,9 +554,9 @@ function _addProceduralRoof(layer, item) {
   }
 
   if (item.assetType === 'roof_gable' || item.assetType === 'roof_gable_detail' || item.assetType === 'roof_t_junction' || item.assetType === 'roof_high_gable') {
-    const roof = _gableRoofMesh('roof_gable_prism', item.rotation ?? 0, roofColor, isHigh ? 0.5 : 0.42)
+    const roof = _gableRoofMesh('roof_gable_prism', item.rotation ?? 0, roofColor, isHigh ? 0.5 : 0.42, footprint.roofX, footprint.roofZ)
     layer.add(roof)
-    const ridge = _box('roof_ridge_cap', [0.78, 0.045, 0.06], [0, isHigh ? 0.89 : 0.81, 0], 0x2e544f, {
+    const ridge = _box('roof_ridge_cap', [footprint.ridgeLength, 0.045, 0.06], [0, isHigh ? 0.89 : 0.81, 0], 0x2e544f, {
       materialRole: 'roof',
       colorable: false,
       roughness: 0.82,
@@ -556,9 +582,9 @@ function _addProceduralRoof(layer, item) {
   layer.add(roof)
 }
 
-function _gableRoofMesh(name, rotation, color, height) {
-  const halfWidth = 0.54
-  const halfDepth = 0.54
+function _gableRoofMesh(name, rotation, color, height, width = 1.08, depth = 1.08) {
+  const halfWidth = width * 0.5
+  const halfDepth = depth * 0.5
   const baseY = 0.38
   const topY = baseY + height
   const vertices = new Float32Array([
@@ -596,14 +622,44 @@ function _gableRoofMesh(name, rotation, color, height) {
 }
 
 function _roofColor(item) {
-  if (item.assetType === 'roof_gable_detail') return 0x4eb89e
+  if (item.materialFamily === 'wood') return 0x3f8f7e
+  if (item.materialFamily === 'stone') return 0x4aa895
   if (item.assetType === 'roof_window') return 0x61c4aa
-  if (item.assetType === 'roof_hip_corner') return 0xb34343
-  return 0x55bea5
+  return 0x45b39b
+}
+
+function _roofFootprint(item) {
+  const connected = item.connectedDirections ?? []
+  const lineAlongX = connected.includes(0) || connected.includes(1)
+  const lineAlongZ = connected.includes(2) || connected.includes(3)
+  const isLine = item.assetType === 'roof_gable_detail' || item.assetType === 'roof_gable' || item.assetType === 'roof_high_gable'
+
+  if (!isLine) {
+    return {
+      eaveX: 1.02,
+      eaveZ: 1.02,
+      roofX: 1.08,
+      roofZ: 1.08,
+      ridgeLength: 0.78,
+    }
+  }
+
+  return {
+    eaveX: lineAlongX ? 1.0 : 1.08,
+    eaveZ: lineAlongZ ? 1.0 : 1.08,
+    roofX: lineAlongX ? 1.02 : 1.08,
+    roofZ: lineAlongZ ? 1.02 : 1.08,
+    ridgeLength: 0.86,
+  }
 }
 
 function _renderProps(layer, propLayer, assetManager) {
   for (const item of propLayer) {
+    if (item.assetType?.startsWith('prop_')) {
+      _renderSuburbanProp(layer, item, assetManager)
+      continue
+    }
+
     if (item.assetType === 'chimney') {
       const chimney = _raw(assetManager, 'chimney.glb', {
         assetType: 'chimney',
@@ -629,6 +685,26 @@ function _renderProps(layer, propLayer, assetManager) {
       layer.add(lantern)
     }
   }
+}
+
+function _renderSuburbanProp(layer, item, assetManager) {
+  const kitId = item.kitId ?? 'kenney-city-suburban'
+  const fileName = getSemanticAsset('props', item.assetType, kitId)
+  if (!fileName) return
+
+  const prop = _raw(assetManager, fileName, {
+    assetType: item.assetType,
+    size: item.scale ?? _propSize(item.assetType),
+    colorable: false,
+    materialRole: 'prop',
+    alignBottomY: SURFACE_ACCENT_Y,
+    kitId,
+  })
+  const [x, , z] = item.positionOffset ?? [0, 0, 0]
+  prop.position.set(x, 0, z)
+  prop.rotation.y = item.rotation ?? 0
+  prop.userData.materialRole = 'prop'
+  layer.add(prop)
 }
 
 function _raw(assetManager, fileName, options) {
@@ -675,13 +751,31 @@ function _roofFile(item) {
   return getAssetDefinition(fallback)?.glb ?? 'roof-point.glb'
 }
 
-function _surfaceFile(item) {
+function _surfaceFile(item, kitId = 'kenney-town-kit') {
   if (item.family === 'harbor_pier') return 'planks.glb'
+  if (kitId === 'kenney-city-suburban') {
+    const semantic = getSemanticAsset('surface', item.assetType, kitId)
+    if (semantic) return semantic
+  }
   const def = getAssetDefinition(item.assetType)
   if (def?.glb) return def.glb
   if (item.surfaceRole === 'quay') return 'road-edge.glb'
   if (item.surfaceRole === 'walkway') return 'road.glb'
   return 'road.glb'
+}
+
+function _surfaceKitId(item, assetManager) {
+  if (item.family === 'harbor_pier') return 'kenney-town-kit'
+  if (item.kitId) return item.kitId
+  if (item.surfaceStyle === 'suburban' || item.family === 'suburban') return 'kenney-city-suburban'
+  return assetManager.getActiveKit?.() === 'kenney-city-suburban' ? 'kenney-city-suburban' : 'kenney-town-kit'
+}
+
+function _propSize(assetType) {
+  if (assetType === 'prop_tree_large') return 0.72
+  if (assetType === 'prop_tree_small') return 0.56
+  if (assetType === 'prop_planter') return 0.42
+  return 0.58
 }
 
 function _surfaceSize(item) {

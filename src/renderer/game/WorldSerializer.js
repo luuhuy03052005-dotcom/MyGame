@@ -62,6 +62,7 @@ const WorldSerializer = {
         activeMaterial: paletteState.activeMaterial ?? 'stone_quay',
         activeCategory: paletteState.activeCategory ?? 'auto',
         activeAssetId: paletteState.activeAssetId ?? 'auto',
+        activeTextureVariation: paletteState.activeTextureVariation ?? 'variation-a.png',
         autoMode: paletteState.autoMode ?? true,
         colors: paletteState.colors ?? [],
       },

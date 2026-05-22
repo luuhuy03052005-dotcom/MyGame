@@ -4,6 +4,7 @@ const ROLE = {
   FACADE: 'facade',
   ROOF: 'roof',
   PROP: 'prop',
+  PREFAB: 'prefab',
 }
 
 const BuildingAssetRegistry = {
@@ -524,6 +525,82 @@ const BuildingAssetRegistry = {
     tags: ['prop', 'facade', 'exterior'],
     rules: { requiresExposedSide: true },
   },
+}
+
+Object.assign(BuildingAssetRegistry, {
+  surface_driveway_long: {
+    id: 'surface_driveway_long',
+    label: 'Long Driveway',
+    role: ROLE.SURFACE,
+    family: 'suburban',
+    glb: 'driveway-long.glb',
+    preview: 'driveway-long.png',
+    tags: ['surface', 'driveway', 'suburban'],
+    rules: { requiresSupport: true },
+  },
+  prop_fence: {
+    id: 'prop_fence',
+    label: 'Fence',
+    role: ROLE.PROP,
+    family: 'suburban',
+    glb: 'fence.glb',
+    preview: 'fence.png',
+    tags: ['prop', 'fence', 'suburban'],
+    rules: { requiresSupport: true, requiresExposedSide: true },
+  },
+  prop_fence_low: {
+    id: 'prop_fence_low',
+    label: 'Low Fence',
+    role: ROLE.PROP,
+    family: 'suburban',
+    glb: 'fence-low.glb',
+    preview: 'fence-low.png',
+    tags: ['prop', 'fence', 'suburban'],
+    rules: { requiresSupport: true, requiresExposedSide: true },
+  },
+  prop_planter: {
+    id: 'prop_planter',
+    label: 'Planter',
+    role: ROLE.PROP,
+    family: 'suburban',
+    glb: 'planter.glb',
+    preview: 'planter.png',
+    tags: ['prop', 'planter', 'plaza', 'suburban'],
+    rules: { requiresSupport: true },
+  },
+  prop_tree_small: {
+    id: 'prop_tree_small',
+    label: 'Small Tree',
+    role: ROLE.PROP,
+    family: 'suburban',
+    glb: 'tree-small.glb',
+    preview: 'tree-small.png',
+    tags: ['prop', 'tree', 'garden', 'suburban'],
+    rules: { requiresSupport: true },
+  },
+  prop_tree_large: {
+    id: 'prop_tree_large',
+    label: 'Large Tree',
+    role: ROLE.PROP,
+    family: 'suburban',
+    glb: 'tree-large.glb',
+    preview: 'tree-large.png',
+    tags: ['prop', 'tree', 'garden', 'suburban'],
+    rules: { requiresSupport: true },
+  },
+})
+
+for (const letter of 'abcdefghijklmnopqrstu') {
+  BuildingAssetRegistry[`prefab_house_${letter}`] = {
+    id: `prefab_house_${letter}`,
+    label: `Suburban House ${letter.toUpperCase()}`,
+    role: ROLE.PREFAB,
+    family: 'suburban',
+    glb: `building-type-${letter}.glb`,
+    preview: `building-type-${letter}.png`,
+    tags: ['prefab', 'house', 'suburban'],
+    rules: { requiresSupport: false },
+  }
 }
 
 const FACADE_VARIANTS_BY_FAMILY = {

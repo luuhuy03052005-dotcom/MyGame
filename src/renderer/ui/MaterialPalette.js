@@ -19,6 +19,14 @@ let activeCategory = 'auto'
 let activeAssetId = 'auto'
 let autoMode = true
 let isVisible = false
+let activeTextureVariation = 'variation-a.png'
+
+const TEXTURE_VARIATIONS = [
+  { id: 'colormap.png', label: 'Base' },
+  { id: 'variation-a.png', label: 'A' },
+  { id: 'variation-b.png', label: 'B' },
+  { id: 'variation-c.png', label: 'C' },
+]
 
 const MaterialPalette = {
   init(containerEl) {
@@ -31,6 +39,7 @@ const MaterialPalette = {
   getActiveMaterial: () => activeMaterial,
   getActiveCategory: () => activeCategory,
   getActiveAssetId: () => activeAssetId,
+  getActiveTextureVariation: () => activeTextureVariation,
   isAutoMode: () => autoMode,
 
   setActiveMaterial(materialId) {
@@ -40,6 +49,9 @@ const MaterialPalette = {
     _updateSelection()
     window.dispatchEvent(new CustomEvent('palette:materialchange', {
       detail: { material: activeMaterial },
+    }))
+    window.dispatchEvent(new CustomEvent('palette:buildselectionchange', {
+      detail: { material: activeMaterial, category: activeCategory, assetId: activeAssetId, autoMode },
     }))
   },
 
@@ -61,6 +73,15 @@ const MaterialPalette = {
     _updateSelection()
     window.dispatchEvent(new CustomEvent('palette:buildselectionchange', {
       detail: { material: activeMaterial, category: activeCategory, assetId: activeAssetId, autoMode },
+    }))
+  },
+
+  setTextureVariation(textureName) {
+    const exists = TEXTURE_VARIATIONS.some(variation => variation.id === textureName)
+    activeTextureVariation = exists ? textureName : 'variation-a.png'
+    _updateSelection()
+    window.dispatchEvent(new CustomEvent('kit:texturechange', {
+      detail: { textureName: activeTextureVariation },
     }))
   },
 
@@ -162,6 +183,25 @@ function _buildDOM() {
         font-size: 9px;
         font-weight: 700;
         cursor: pointer;
+      }
+
+      #material-palette .var-slot {
+        height: 24px;
+        min-width: 54px;
+        padding: 0 9px;
+        border: 1px solid rgba(255,255,255,0.45);
+        border-radius: 7px;
+        background: rgba(255,255,255,0.28);
+        color: rgba(32,38,46,0.62);
+        font-size: 9px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      #material-palette .var-slot.active {
+        color: rgba(32,38,46,0.84);
+        background: rgba(255,255,255,0.76);
+        box-shadow: 0 0 0 2px rgba(45,55,72,0.18);
       }
 
       #material-palette .kit-row {
@@ -292,6 +332,7 @@ function _buildDOM() {
   })
 
   panelEl.appendChild(materialRow)
+  panelEl.appendChild(_createVariationRow())
   panelEl.appendChild(categoryRow)
   panelEl.appendChild(_createItemRow())
   container.appendChild(panelEl)
@@ -305,8 +346,34 @@ function _updateSelection() {
   panelEl.querySelectorAll('.cat-slot').forEach(slot => {
     slot.classList.toggle('active', slot.dataset.category === activeCategory)
   })
+  panelEl.querySelectorAll('.var-slot').forEach(slot => {
+    slot.classList.toggle('active', slot.dataset.textureVariation === activeTextureVariation)
+  })
   const oldRow = panelEl.querySelector('.kit-row')
   if (oldRow) oldRow.replaceWith(_createItemRow())
+}
+
+function _createVariationRow() {
+  const row = document.createElement('div')
+  row.className = 'mat-row'
+
+  const label = document.createElement('span')
+  label.className = 'mat-label'
+  label.textContent = 'Texture'
+  row.appendChild(label)
+
+  TEXTURE_VARIATIONS.forEach(variation => {
+    const slot = document.createElement('button')
+    slot.className = 'var-slot'
+    slot.dataset.textureVariation = variation.id
+    slot.title = variation.id
+    slot.textContent = variation.label
+    slot.addEventListener('click', () => MaterialPalette.setTextureVariation(variation.id))
+    if (variation.id === activeTextureVariation) slot.classList.add('active')
+    row.appendChild(slot)
+  })
+
+  return row
 }
 
 function _categoryTitle(categoryId) {

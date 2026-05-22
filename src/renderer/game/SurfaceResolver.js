@@ -19,7 +19,27 @@ function resolve(cell, gridManager, context = {}) {
   const adjacentBuildings = _adjacentBuildingDirections(cell, gridManager)
   const nearbyDoorDirections = _nearbyDoorDirections(cell, gridManager)
   const materialFamily = context.materialFamily ?? cell.material ?? 'stone_quay'
+  const surfaceStyle = context.surfaceStyle
+    ?? (context.activeMaterial === 'suburban' || context.activeKit === 'kenney-city-suburban' ? 'suburban' : 'stone_quay')
+  const surfaceFamily = materialFamily === 'harbor_pier'
+    ? 'harbor_pier'
+    : surfaceStyle === 'suburban'
+      ? 'suburban'
+      : 'stone_quay'
   const topology = _surfaceTopology(walkConnections, openDirections, adjacentBuildings, nearbyDoorDirections)
+
+  if (cell.metadata?.surfaceAssetType) {
+    const direction = cell.metadata.surfaceDirection ?? nearbyDoorDirections[0] ?? openDirections[0] ?? 2
+    return [_makeSurfaceItem(cell.metadata.surfaceAssetType, cell.metadata.surfaceRole ?? 'entrance', {
+      topology,
+      walkConnections,
+      openDirections,
+      rotation: rotationFromDirection(direction),
+      side: sideNameFromDirection(direction),
+      family: surfaceFamily,
+      surfaceStyle,
+    })]
+  }
 
   if (hasBuildingAbove) {
     return [_makeSurfaceItem('surface_building_footprint', 'building_footprint', {
@@ -28,6 +48,8 @@ function resolve(cell, gridManager, context = {}) {
       openDirections,
       rotation: 0,
       subtle: true,
+      family: surfaceFamily,
+      surfaceStyle,
     })]
   }
 
@@ -36,6 +58,7 @@ function resolve(cell, gridManager, context = {}) {
     return [_pathSurfaceForConnections(walkConnections, topology, {
       family: 'harbor_pier',
       fallbackAsset: 'surface_walkway_straight',
+      surfaceStyle,
     })]
   }
 
@@ -47,6 +70,8 @@ function resolve(cell, gridManager, context = {}) {
       openDirections,
       rotation: rotationFromDirection(direction),
       side: sideNameFromDirection(direction),
+      family: surfaceFamily,
+      surfaceStyle,
     })]
   }
 
@@ -54,6 +79,8 @@ function resolve(cell, gridManager, context = {}) {
     return [_pathSurfaceForConnections(walkConnections, topology, {
       preferredDirection: adjacentBuildings[0],
       openDirections,
+      family: surfaceFamily,
+      surfaceStyle,
     })]
   }
 
@@ -68,6 +95,8 @@ function resolve(cell, gridManager, context = {}) {
       openDirections,
       rotation: rotationFromDirection(direction),
       side: sideNameFromDirection(direction),
+      family: surfaceFamily,
+      surfaceStyle,
     })]
   }
 
@@ -77,10 +106,12 @@ function resolve(cell, gridManager, context = {}) {
       walkConnections,
       openDirections,
       rotation: 0,
+      family: surfaceFamily,
+      surfaceStyle,
     })]
   }
 
-  return [_pathSurfaceForConnections(walkConnections, topology, { openDirections })]
+  return [_pathSurfaceForConnections(walkConnections, topology, { openDirections, family: surfaceFamily, surfaceStyle })]
 }
 
 function _pathSurfaceForConnections(walkConnections, topology, options = {}) {
@@ -105,6 +136,7 @@ function _pathSurfaceForConnections(walkConnections, topology, options = {}) {
 
   return _makeSurfaceItem(options.fallbackAsset ?? assetType, 'walkway', {
     family: options.family,
+    surfaceStyle: options.surfaceStyle,
     topology,
     walkConnections: connections,
     openDirections: options.openDirections ?? [],
@@ -128,6 +160,7 @@ function _makeSurfaceItem(assetType, surfaceRole, options = {}) {
     colorable: false,
     subtle: options.subtle ?? false,
     family: options.family ?? 'stone_quay',
+    surfaceStyle: options.surfaceStyle ?? 'stone_quay',
   }
 }
 

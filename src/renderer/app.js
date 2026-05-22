@@ -195,6 +195,12 @@ function setupGameEvents() {
   window.addEventListener('palette:buildselectionchange', (e) => {
     BuildController.setBuildSelection(e.detail)
   })
+  window.addEventListener('kit:change', (e) => {
+    AssetManager.setActiveKit(e.detail?.kitId)
+  })
+  window.addEventListener('kit:texturechange', (e) => {
+    AssetManager.setTextureVariation(e.detail?.textureName)
+  })
 
   // Undo/Redo state → Toolbar buttons
   const syncUndoRedo = () => {
@@ -313,6 +319,7 @@ async function _doSave() {
         activeMaterial: MaterialPalette.getActiveMaterial(),
         activeCategory: MaterialPalette.getActiveCategory(),
         activeAssetId: MaterialPalette.getActiveAssetId(),
+        activeTextureVariation: MaterialPalette.getActiveTextureVariation(),
         autoMode: MaterialPalette.isAutoMode(),
         colors: [],
       },
@@ -382,6 +389,9 @@ function _loadWorldFromJson(jsonString) {
     if (data.palette?.activeAssetId) {
       MaterialPalette.setActiveAsset(data.palette.activeAssetId)
     }
+    if (data.palette?.activeTextureVariation) {
+      MaterialPalette.setTextureVariation(data.palette.activeTextureVariation)
+    }
 
     // Rebuild cells từ save data
     for (const cellData of data.cells) {
@@ -389,6 +399,7 @@ function _loadWorldFromJson(jsonString) {
       cell.material = cellData.material ?? _resolveLoadedMaterial(cellData.y, data.palette?.activeMaterial)
       cell.assetType = cellData.assetType
       cell.rotation  = cellData.rotation
+      cell.metadata = cellData.metadata ?? {}
     }
 
     // Re-resolve và spawn tất cả
@@ -399,7 +410,14 @@ function _loadWorldFromJson(jsonString) {
           activeMaterial: data.palette?.activeMaterial ?? cell.material,
           activeCategory: data.palette?.activeCategory ?? 'auto',
           activeAssetId: data.palette?.activeAssetId ?? 'auto',
+          activeTextureVariation: data.palette?.activeTextureVariation ?? 'variation-a.png',
           autoMode: data.palette?.autoMode !== false,
+          activeKit: data.palette?.activeMaterial === 'suburban' || data.palette?.activeCategory === 'prefab'
+            ? 'kenney-city-suburban'
+            : AssetManager.getActiveKit(),
+          surfaceStyle: data.palette?.activeMaterial === 'suburban' || data.palette?.activeCategory === 'prefab'
+            ? 'suburban'
+            : 'stone_quay',
           materialFamily: cell.material,
           foundationStyle: cell.y === 0 && cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay',
         })
@@ -451,6 +469,7 @@ async function _doSilentAutosave() {
         activeMaterial: MaterialPalette.getActiveMaterial(),
         activeCategory: MaterialPalette.getActiveCategory(),
         activeAssetId: MaterialPalette.getActiveAssetId(),
+        activeTextureVariation: MaterialPalette.getActiveTextureVariation(),
         autoMode: MaterialPalette.isAutoMode(),
         colors: [],
       },
@@ -531,6 +550,8 @@ function _buildLoadGrammarContext(cell, neighbors, recipe = null) {
     height: cell.y,
     materialFamily: recipe?.materialFamily ?? cell.material ?? 'stone_quay',
     foundationStyle: recipe?.foundationStyle ?? (cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay'),
+    activeKit: AssetManager.getActiveKit(),
+    surfaceStyle: recipe?.surfaceStyle ?? (AssetManager.getActiveKit() === 'kenney-city-suburban' ? 'suburban' : 'stone_quay'),
     topologySignature: _loadTopologySignature(neighbors),
     rotation: cell.rotation,
     openDirections: recipe?.openDirections ?? openDirections,
@@ -546,6 +567,7 @@ function _buildLoadGrammarContext(cell, neighbors, recipe = null) {
     visualRecipe: recipe,
     foundationLayer: recipe?.foundationLayer ?? [],
     surfaceLayer: recipe?.surfaceLayer ?? [],
+    prefabLayer: recipe?.prefabLayer ?? [],
     facadeLayer: recipe?.facadeLayer ?? [],
     roofLayer: recipe?.roofLayer ?? [],
     propLayer: recipe?.propLayer ?? [],

@@ -43,6 +43,33 @@ export const ASSET_REGISTRY = {
   surface_quay_corner:       'surface_quay_corner.glb',
   surface_garden_patch:      'surface_garden_patch.glb',
   surface_waterfront_step:   'surface_waterfront_step.glb',
+  surface_driveway_long:     'surface_driveway_long.glb',
+  prop_fence:                'prop_fence.glb',
+  prop_fence_low:            'prop_fence_low.glb',
+  prop_planter:              'prop_planter.glb',
+  prop_tree_small:           'prop_tree_small.glb',
+  prop_tree_large:           'prop_tree_large.glb',
+  prefab_house_a:            'prefab_house_a.glb',
+  prefab_house_b:            'prefab_house_b.glb',
+  prefab_house_c:            'prefab_house_c.glb',
+  prefab_house_d:            'prefab_house_d.glb',
+  prefab_house_e:            'prefab_house_e.glb',
+  prefab_house_f:            'prefab_house_f.glb',
+  prefab_house_g:            'prefab_house_g.glb',
+  prefab_house_h:            'prefab_house_h.glb',
+  prefab_house_i:            'prefab_house_i.glb',
+  prefab_house_j:            'prefab_house_j.glb',
+  prefab_house_k:            'prefab_house_k.glb',
+  prefab_house_l:            'prefab_house_l.glb',
+  prefab_house_m:            'prefab_house_m.glb',
+  prefab_house_n:            'prefab_house_n.glb',
+  prefab_house_o:            'prefab_house_o.glb',
+  prefab_house_p:            'prefab_house_p.glb',
+  prefab_house_q:            'prefab_house_q.glb',
+  prefab_house_r:            'prefab_house_r.glb',
+  prefab_house_s:            'prefab_house_s.glb',
+  prefab_house_t:            'prefab_house_t.glb',
+  prefab_house_u:            'prefab_house_u.glb',
   _fallback:         '_fallback_cube.glb',  // LUÔN phải resolve được
 }
 
@@ -89,6 +116,12 @@ export const BUILD_MATERIALS = [
     description: 'Garden props and softer plaza accents',
   },
   {
+    id: 'suburban',
+    label: 'Suburban',
+    swatch: '#b8c4a8',
+    description: 'Kenney City Kit Suburban paths, driveways, props and prefab houses',
+  },
+  {
     id: 'stone_plaza',
     label: 'Stone Plaza',
     swatch: '#8f9697',
@@ -128,6 +161,7 @@ export const BUILD_CATEGORIES = [
   { id: 'facade', label: 'Facade', placementMode: 'decorative' },
   { id: 'connection', label: 'Paths', placementMode: 'decorative' },
   { id: 'prop', label: 'Props', placementMode: 'decorative' },
+  { id: 'prefab', label: 'Prefabs', placementMode: 'manual' },
 ]
 
 export const ASSET_DEFINITIONS = [
@@ -517,6 +551,75 @@ export const ASSET_DEFINITIONS = [
     rules: { requiresSupport: true },
   },
 ]
+
+ASSET_DEFINITIONS.push(
+  {
+    id: 'suburban-path',
+    label: 'Suburban Path',
+    category: 'connection',
+    family: 'suburban',
+    glbPath: 'path-long.glb',
+    previewPath: 'path-long.png',
+    tags: ['suburban', 'path', 'walkway'],
+    placementMode: 'auto',
+    rules: { requiresSupport: true },
+  },
+  {
+    id: 'suburban-driveway',
+    label: 'Driveway',
+    category: 'connection',
+    family: 'suburban',
+    glbPath: 'driveway-short.glb',
+    previewPath: 'driveway-short.png',
+    tags: ['suburban', 'driveway', 'entrance'],
+    placementMode: 'auto',
+    rules: { requiresSupport: true },
+  },
+  {
+    id: 'suburban-stones',
+    label: 'Stone Path',
+    category: 'foundation',
+    family: 'suburban',
+    glbPath: 'path-stones-messy.glb',
+    previewPath: 'path-stones-messy.png',
+    tags: ['suburban', 'plaza', 'stones'],
+    placementMode: 'auto',
+    rules: { requiresSupport: true },
+  },
+  {
+    id: 'suburban-planter',
+    label: 'Planter',
+    category: 'prop',
+    family: 'suburban',
+    glbPath: 'planter.glb',
+    previewPath: 'planter.png',
+    tags: ['suburban', 'prop', 'plaza'],
+    placementMode: 'decorative',
+    rules: { requiresSupport: true },
+  },
+  {
+    id: 'suburban-tree',
+    label: 'Tree',
+    category: 'prop',
+    family: 'suburban',
+    glbPath: 'tree-small.glb',
+    previewPath: 'tree-small.png',
+    tags: ['suburban', 'prop', 'garden'],
+    placementMode: 'decorative',
+    rules: { requiresSupport: true },
+  },
+  ...'abcdefghijklmnopqrstu'.split('').map(letter => ({
+    id: `prefab_house_${letter}`,
+    label: `House ${letter.toUpperCase()}`,
+    category: 'prefab',
+    family: 'suburban',
+    glbPath: `building-type-${letter}.glb`,
+    previewPath: `building-type-${letter}.png`,
+    tags: ['suburban', 'prefab', 'house'],
+    placementMode: 'manual',
+    rules: { requiresSupport: false },
+  }))
+)
 
 // Palette màu mặc định 16 màu pastel — theo DATA_MODELS.md mục 9
 export const DEFAULT_PALETTE = [

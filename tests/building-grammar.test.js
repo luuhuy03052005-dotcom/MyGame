@@ -3,6 +3,8 @@ import { GridManager } from '../src/renderer/game/GridManager.js'
 import { BuildingGrammarEngine } from '../src/renderer/game/BuildingGrammarEngine.js'
 import { VisualRecipeRenderer } from '../src/renderer/game/VisualRecipeRenderer.js'
 import { hashString, pickVariant, chance } from '../src/renderer/utils/deterministicHash.js'
+import { getKitModelUrl, getKitTextureUrl, getSemanticAsset } from '../src/renderer/assets/KitRegistry.js'
+import { Cell } from '../src/renderer/game/Cell.js'
 import * as THREE from 'three'
 
 function addCell(x, y, z, material = 'stone_quay') {
@@ -87,6 +89,20 @@ describe('BuildingGrammarEngine — Foundation topology', () => {
     const recipe = BuildingGrammarEngine.resolveCell(center, GridManager)
     expect(recipe.surfaceLayer[0].assetType).toBe('surface_plaza_center')
   })
+
+  it('suburban surface context resolves path surfaces for Graphic Kit 2', () => {
+    const cell = addCell(0, 0, 0)
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager, {
+      activeMaterial: 'suburban',
+      activeKit: 'kenney-city-suburban',
+      surfaceStyle: 'suburban',
+    })
+
+    expect(recipe.surfaceStyle).toBe('suburban')
+    expect(recipe.surfaceLayer[0].surfaceStyle).toBe('suburban')
+    expect(recipe.surfaceLayer[0].family).toBe('suburban')
+    expect(getSemanticAsset('surface', recipe.surfaceLayer[0].assetType, 'kenney-city-suburban')).toMatch(/path-|driveway-/)
+  })
 })
 
 describe('BuildingGrammarEngine — Facade and roof grammar', () => {
@@ -117,7 +133,34 @@ describe('BuildingGrammarEngine — Facade and roof grammar', () => {
 
     expect(lowerRecipe.roofLayer).toHaveLength(0)
     expect(topRecipe.roofLayer).toHaveLength(1)
-    expect(topRecipe.roofLayer[0].assetType).toBe('roof_window')
+    expect(topRecipe.roofLayer[0].assetType).toBe('roof_peak')
+  })
+
+  it('roof line endpoints use gable roof, not isolated point caps', () => {
+    addCell(0, 0, 0)
+    addCell(1, 0, 0)
+    const left = addCell(0, 1, 0, 'plaster')
+    const right = addCell(1, 1, 0, 'plaster')
+
+    const leftRecipe = BuildingGrammarEngine.resolveCell(left, GridManager)
+    const rightRecipe = BuildingGrammarEngine.resolveCell(right, GridManager)
+
+    expect(leftRecipe.roofLayer[0].assetType).toBe('roof_gable_detail')
+    expect(rightRecipe.roofLayer[0].assetType).toBe('roof_gable_detail')
+    expect(leftRecipe.roofLayer[0].assetType).not.toBe('roof_peak')
+    expect(rightRecipe.roofLayer[0].assetType).not.toBe('roof_peak')
+  })
+
+  it('doors require an accessible foundation/path side', () => {
+    addCell(0, 0, 0)
+    const cell = addCell(0, 1, 0, 'plaster')
+    addCell(1, 0, 0)
+
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager)
+    const doorFacades = recipe.facadeLayer.filter(item => item.detail === 'door')
+
+    expect(recipe.accessDirections).toEqual([1])
+    expect(doorFacades.every(item => item.side === 'east')).toBe(true)
   })
 
   it('same topology and material resolve deterministically', () => {
@@ -195,6 +238,82 @@ describe('VisualRecipeRenderer', () => {
     expect(layerNames).toContain('foundationLayer')
     expect(layerNames).toContain('surfaceLayer')
     expect(surfaceLayer.children.some(child => child.name === 'surface_stone_underlay')).toBe(true)
+  })
+
+  it('renders suburban surface assets from Graphic Kit 2 when surfaceStyle is suburban', () => {
+    const cell = addCell(0, 0, 0)
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager, {
+      activeMaterial: 'suburban',
+      activeKit: 'kenney-city-suburban',
+      surfaceStyle: 'suburban',
+    })
+    const files = []
+    const fakeAssetManager = {
+      getActiveKit: () => 'kenney-city-suburban',
+      getRaw(fileName) {
+        files.push(fileName)
+        const group = new THREE.Group()
+        group.name = fileName
+        group.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial()))
+        return group
+      },
+    }
+
+    VisualRecipeRenderer.createCellGroup(cell, recipe, fakeAssetManager)
+    expect(files.some(file => file.startsWith('path-') || file.startsWith('driveway-'))).toBe(true)
+    expect(files).not.toContain('road.glb')
+  })
+
+  it('renders prefabLayer as a city-suburban house GLB', () => {
+    addCell(0, 0, 0)
+    const cell = addCell(0, 1, 0, 'suburban')
+    cell.metadata = { prefabId: 'prefab_house_a', entranceSide: 'south' }
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager, {
+      activeMaterial: 'suburban',
+      activeCategory: 'prefab',
+      activeAssetId: 'prefab_house_a',
+      activeKit: 'kenney-city-suburban',
+      surfaceStyle: 'suburban',
+    })
+    const files = []
+    const fakeAssetManager = {
+      getRaw(fileName) {
+        files.push(fileName)
+        const group = new THREE.Group()
+        group.name = fileName
+        group.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial()))
+        return group
+      },
+    }
+
+    const group = VisualRecipeRenderer.createCellGroup(cell, recipe, fakeAssetManager)
+
+    expect(recipe.prefabLayer[0].assetType).toBe('prefab_house_a')
+    expect(files).toContain('building-type-a.glb')
+    expect(group.children.map(child => child.name)).toContain('prefabLayer')
+  })
+})
+
+describe('Graphic Kit 2 registry and save metadata', () => {
+  it('registers required City Suburban models and texture variations', () => {
+    expect(getKitModelUrl('building-type-a.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('path-long.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('path-stones-messy.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('driveway-short.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('planter.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('tree-small.glb', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitTextureUrl('variation-a.png', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitTextureUrl('variation-b.png', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitTextureUrl('variation-c.png', 'kenney-city-suburban')).toBeTruthy()
+    expect(getKitModelUrl('road.glb', 'kenney-town-kit')).toBeTruthy()
+  })
+
+  it('serializes prefab metadata for save/load compatibility', () => {
+    const cell = new Cell(1, 1, 2, '#F5DEB3', 'suburban')
+    cell.metadata = { prefabId: 'prefab_house_a', entranceSide: 'south' }
+    const restored = Cell.fromJSON(cell.toJSON())
+
+    expect(restored.metadata).toEqual(cell.metadata)
   })
 })
 

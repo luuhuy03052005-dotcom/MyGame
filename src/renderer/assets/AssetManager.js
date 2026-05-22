@@ -24,13 +24,22 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import { BUILD_MATERIALS, DEFAULT_MATERIAL } from './AssetRegistry.js'
+import {
+  getKit,
+  getKitModelUrl as resolveKitModelUrl,
+  getKitTextureUrl as resolveKitTextureUrl,
+} from './KitRegistry.js'
 
 // Cache của GLB prototype objects — clone khi dùng
 const _cache = new Map()
 const _placeholderCache = new Map()
 const _loadErrors = new Map()
 const _rawModelCache = new Map()
+const _textureCache = new Map()
+const _textureLoader = new THREE.TextureLoader()
 let _ready = false
+let _activeKitId = 'kenney-city-suburban'
+let _activeTextureVariation = 'variation-a.png'
 
 const MATERIAL_IDS = BUILD_MATERIALS.map(material => material.id)
 const VISUAL_VARIANT_COUNT = 3
@@ -80,6 +89,55 @@ const RAW_MODEL_PRELOAD_FILES = [
   'chimney.glb',
   'lantern.glb',
 ]
+
+const SUBURBAN_RAW_MODEL_PRELOAD_FILES = [
+  'building-type-a.glb',
+  'building-type-b.glb',
+  'building-type-c.glb',
+  'building-type-d.glb',
+  'building-type-e.glb',
+  'building-type-f.glb',
+  'building-type-g.glb',
+  'building-type-h.glb',
+  'building-type-i.glb',
+  'building-type-j.glb',
+  'building-type-k.glb',
+  'building-type-l.glb',
+  'building-type-m.glb',
+  'building-type-n.glb',
+  'building-type-o.glb',
+  'building-type-p.glb',
+  'building-type-q.glb',
+  'building-type-r.glb',
+  'building-type-s.glb',
+  'building-type-t.glb',
+  'building-type-u.glb',
+  'driveway-long.glb',
+  'driveway-short.glb',
+  'fence.glb',
+  'fence-low.glb',
+  'fence-1x2.glb',
+  'fence-1x3.glb',
+  'fence-1x4.glb',
+  'path-long.glb',
+  'path-short.glb',
+  'path-stones-long.glb',
+  'path-stones-short.glb',
+  'path-stones-messy.glb',
+  'planter.glb',
+  'tree-small.glb',
+  'tree-large.glb',
+]
+
+const RAW_ONLY_ASSET_TYPES = new Set([
+  'surface_driveway_long',
+  'prop_fence',
+  'prop_fence_low',
+  'prop_planter',
+  'prop_tree_small',
+  'prop_tree_large',
+  ...'abcdefghijklmnopqrstu'.split('').map(letter => `prefab_house_${letter}`),
+])
 
 const MODEL_PATHS = {
   foundation_seawall_straight: 'wall-arch.glb',
@@ -570,7 +628,7 @@ const MATERIAL_CONFIGS = {
   },
 }
 
-const colormapUrl = new URL(
+const fallbackTownColormapUrl = new URL(
   './models/kenney-town-kit/Textures/colormap.png',
   import.meta.url
 ).href
@@ -579,7 +637,9 @@ const _loadingManager = new THREE.LoadingManager()
 _loadingManager.setURLModifier((url) => {
   const normalized = url.replace(/\\/g, '/')
   if (normalized.endsWith('Textures/colormap.png') || normalized.endsWith('/colormap.png')) {
-    return colormapUrl
+    return resolveKitTextureUrl(_activeTextureVariation, _activeKitId)
+      ?? resolveKitTextureUrl('colormap.png', _activeKitId)
+      ?? fallbackTownColormapUrl
   }
   return url
 })
@@ -889,6 +949,8 @@ const AssetManager = {
    * @returns {Promise<void>}
    */
   async preload(keys) {
+    console.log(`[AssetManager] Active kit: ${_activeKitId}`)
+    console.log(`[AssetManager] Texture variation: ${_activeTextureVariation}`)
     const keysToLoad = [...new Set([...keys, ...Object.keys(MODEL_PATHS)])]
     const materialKeys = []
     for (const key of keysToLoad) {
@@ -921,9 +983,17 @@ const AssetManager = {
 
     for (const fileName of RAW_MODEL_PRELOAD_FILES) {
       try {
-        await _loadRawModel(fileName)
+        await _loadRawModel(fileName, 'kenney-town-kit')
       } catch (err) {
         console.warn(`[AssetManager] Raw GLB preload failed for ${fileName}`, err)
+      }
+    }
+
+    for (const fileName of SUBURBAN_RAW_MODEL_PRELOAD_FILES) {
+      try {
+        await _loadRawModel(fileName, 'kenney-city-suburban')
+      } catch (err) {
+        console.warn(`[AssetManager] Suburban raw GLB preload failed for ${fileName}`, err)
       }
     }
 
@@ -966,19 +1036,47 @@ const AssetManager = {
   },
 
   getRaw(fileName, options = {}) {
-    const raw = _rawModelCache.get(fileName)
+    const kitId = _resolveRawKitId(fileName, options.kitId ?? _activeKitId)
+    const raw = _rawModelCache.get(_rawCacheKey(fileName, kitId))
     if (!raw) {
-      throw new Error(`[AssetManager] Raw GLB '${fileName}' is not preloaded`)
+      throw new Error(`[AssetManager] Raw GLB '${fileName}' is not preloaded for ${kitId}`)
     }
 
     const clone = _clonePrototype(raw)
+    clone.userData.kitId = kitId
     normalizeToCell(clone, options.size ?? 1, {
       centerXZ: options.centerXZ !== false,
       alignBottomY: options.alignBottomY ?? -0.5,
     })
-    _prepareModelMeshes(clone, options.assetType ?? fileName, options.colorable ?? false, options.materialRole)
+    _prepareModelMeshes(clone, options.assetType ?? fileName, options.colorable ?? false, options.materialRole, kitId)
     return clone
   },
+
+  setActiveKit(kitId) {
+    const kit = getKit(kitId)
+    _activeKitId = kit.id
+    console.log(`[AssetManager] Active kit: ${_activeKitId}`)
+  },
+
+  getActiveKit: () => _activeKitId,
+
+  getKitModelUrl(fileName, kitId = _activeKitId) {
+    return resolveKitModelUrl(fileName, kitId)
+  },
+
+  getKitTextureUrl(textureName, kitId = _activeKitId) {
+    return resolveKitTextureUrl(textureName, kitId)
+  },
+
+  setTextureVariation(textureName = 'variation-a.png') {
+    const kit = getKit(_activeKitId)
+    const next = kit.variations.includes(textureName) ? textureName : kit.variations[0]
+    _activeTextureVariation = next
+    _textureCache.delete(_textureCacheKey(_activeKitId, next))
+    console.log(`[AssetManager] Texture variation: ${_activeTextureVariation}`)
+  },
+
+  getTextureVariation: () => _activeTextureVariation,
 
   isReady: () => _ready,
 }
@@ -1046,11 +1144,43 @@ function _variantFromKey(assetType, materialId, variantKey = '') {
 }
 
 function modelUrl(fileName) {
-  const url = MODEL_FILE_URLS[fileName]
+  const url = resolveKitModelUrl(fileName, 'kenney-town-kit') ?? MODEL_FILE_URLS[fileName]
   if (!url) {
     throw new Error(`No Vite asset URL registered for ${fileName}`)
   }
   return url
+}
+
+function _rawCacheKey(fileName, kitId) {
+  return `${kitId}::${fileName}`
+}
+
+function _textureCacheKey(kitId, textureName) {
+  return `${kitId}::${textureName}`
+}
+
+function _resolveRawKitId(fileName, preferredKitId = _activeKitId) {
+  if (resolveKitModelUrl(fileName, preferredKitId)) return preferredKitId
+  if (resolveKitModelUrl(fileName, _activeKitId)) return _activeKitId
+  if (resolveKitModelUrl(fileName, 'kenney-town-kit')) return 'kenney-town-kit'
+  if (resolveKitModelUrl(fileName, 'kenney-city-suburban')) return 'kenney-city-suburban'
+  return preferredKitId
+}
+
+function _activeKitTexture(kitId = _activeKitId) {
+  const textureName = _activeTextureVariation
+  const url = resolveKitTextureUrl(textureName, kitId)
+    ?? resolveKitTextureUrl('colormap.png', kitId)
+  if (!url) return null
+
+  const key = _textureCacheKey(kitId, textureName)
+  if (_textureCache.has(key)) return _textureCache.get(key)
+
+  const texture = _textureLoader.load(url)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.needsUpdate = true
+  _textureCache.set(key, texture)
+  return texture
 }
 
 async function _loadModel(assetType, materialId = DEFAULT_MATERIAL, variant = 0) {
@@ -1074,6 +1204,10 @@ async function _loadModel(assetType, materialId = DEFAULT_MATERIAL, variant = 0)
 
   const fileName = MODEL_PATHS[assetType]
   if (!fileName) {
+    if (RAW_ONLY_ASSET_TYPES.has(assetType)) {
+      _buildPlaceholder(assetType)
+      return
+    }
     console.warn(`[AssetManager] Missing GLB for ${assetType}, using placeholder fallback`)
     _buildPlaceholder(assetType)
     return
@@ -1523,13 +1657,18 @@ function _roofOptionsForContext(material, assetType, context = {}) {
   return regular
 }
 
-async function _loadRawModel(fileName) {
-  if (_rawModelCache.has(fileName)) {
-    return _rawModelCache.get(fileName)
+async function _loadRawModel(fileName, kitId = _activeKitId) {
+  const resolvedKitId = _resolveRawKitId(fileName, kitId)
+  const key = _rawCacheKey(fileName, resolvedKitId)
+  if (_rawModelCache.has(key)) {
+    return _rawModelCache.get(key)
   }
 
-  const gltf = await _loader.loadAsync(modelUrl(fileName))
-  _rawModelCache.set(fileName, gltf.scene)
+  const url = resolveKitModelUrl(fileName, resolvedKitId) ?? modelUrl(fileName)
+  const gltf = await _loader.loadAsync(url)
+  gltf.scene.userData.kitId = resolvedKitId
+  _rawModelCache.set(key, gltf.scene)
+  console.log(`[AssetManager] Loaded: ${fileName}`)
   return gltf.scene
 }
 
@@ -1546,14 +1685,14 @@ async function _buildCompositeModel(assetType, parts) {
       continue
     }
 
-    const raw = await _loadRawModel(partDef.file)
+    const raw = await _loadRawModel(partDef.file, partDef.kitId ?? 'kenney-town-kit')
     const part = _clonePrototype(raw)
     normalizeToCell(part, partDef.size ?? 1, {
       centerXZ: partDef.centerXZ !== false,
     })
     part.position.add(new THREE.Vector3(...(partDef.position ?? [0, 0, 0])))
     if (partDef.rotation) part.rotation.y += partDef.rotation
-    _prepareModelMeshes(part, assetType, partDef.colorable)
+    _prepareModelMeshes(part, assetType, partDef.colorable, partDef.materialRole, raw.userData?.kitId)
     _addPartToLayer(layers, part, assetType, partDef)
   }
 
@@ -1574,7 +1713,8 @@ function _buildCompositeModelFromCache(assetType, parts) {
       continue
     }
 
-    const raw = _rawModelCache.get(partDef.file)
+    const rawKitId = _resolveRawKitId(partDef.file, partDef.kitId ?? 'kenney-town-kit')
+    const raw = _rawModelCache.get(_rawCacheKey(partDef.file, rawKitId))
     if (!raw) return null
 
     const part = _clonePrototype(raw)
@@ -1583,7 +1723,7 @@ function _buildCompositeModelFromCache(assetType, parts) {
     })
     part.position.add(new THREE.Vector3(...(partDef.position ?? [0, 0, 0])))
     if (partDef.rotation) part.rotation.y += partDef.rotation
-    _prepareModelMeshes(part, assetType, partDef.colorable)
+    _prepareModelMeshes(part, assetType, partDef.colorable, partDef.materialRole, rawKitId)
     _addPartToLayer(layers, part, assetType, partDef)
   }
 
@@ -1714,7 +1854,7 @@ function _prepareModel(prototype, assetType) {
   _prepareModelMeshes(prototype, assetType)
 }
 
-function _prepareModelMeshes(object, assetType, forceColorable = null, materialRole = null) {
+function _prepareModelMeshes(object, assetType, forceColorable = null, materialRole = null, kitId = object?.userData?.kitId) {
   object.traverse((child) => {
     if (!child.isMesh) return
 
@@ -1725,6 +1865,12 @@ function _prepareModelMeshes(object, assetType, forceColorable = null, materialR
     const materialList = Array.isArray(child.material) ? child.material : [child.material]
     for (const material of materialList) {
       if (!material) continue
+      if (kitId === 'kenney-city-suburban') {
+        const variationTexture = _activeKitTexture(kitId)
+        if (variationTexture) {
+          material.map = variationTexture
+        }
+      }
       if (material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace
         material.map.needsUpdate = true
@@ -1742,6 +1888,7 @@ function _prepareModelMeshes(object, assetType, forceColorable = null, materialR
     )
     child.userData.isColorable = forceColorable ?? inferredColorable
     if (materialRole) child.userData.materialRole = materialRole
+    if (kitId) child.userData.kitId = kitId
   })
 }
 

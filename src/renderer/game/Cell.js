@@ -53,6 +53,7 @@ export class Cell {
       material: this.material,
       assetType: this.assetType,
       rotation: this.rotation,
+      metadata: this.metadata ?? {},
     }
   }
 
@@ -65,6 +66,7 @@ export class Cell {
     const cell = new Cell(data.x, data.y, data.z, data.color, data.material ?? 'stone_quay')
     cell.assetType = data.assetType ?? '_fallback'
     cell.rotation = data.rotation ?? 0
+    cell.metadata = data.metadata ?? {}
     return cell
   }
 }

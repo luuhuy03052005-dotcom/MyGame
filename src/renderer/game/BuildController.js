@@ -37,6 +37,7 @@ import { AudioSystem } from '../engine/AudioSystem.js'
 import { ParticleSystem } from '../engine/ParticleSystem.js'
 import { BuildingGrammarEngine } from './BuildingGrammarEngine.js'
 import { VisualRecipeRenderer } from './VisualRecipeRenderer.js'
+import { PrefabPlacementMode } from './PrefabPlacementMode.js'
 
 const CELL_SIZE = 1
 const CELL_HEIGHT = 1
@@ -99,8 +100,16 @@ const BuildController = {
   build(gridPos, color, material) {
     const { x, z } = gridPos
 
+    if (PrefabPlacementMode.isPrefabAsset(activeAssetId)) {
+      return _buildPrefab(x, z, color || activeColor, activeAssetId)
+    }
+
     // Xác định y: stack lên trên cell cao nhất tại cột x,z
     const topCell = gridManager.getTopCell(x, z)
+    if (topCell?.metadata?.reservedBy && topCell.y === 0) {
+      console.warn(`[BuildController] Cell ${topCell.id} is reserved by ${topCell.metadata.reservedBy}`)
+      return null
+    }
     const y = topCell ? topCell.y + 1 : 0
 
     // Không thể build lên đúng vị trí đã có cell
@@ -160,6 +169,10 @@ const BuildController = {
     // Xóa khỏi GridManager
     gridManager.removeCell(x, y, z)
 
+    if (topCell.metadata?.prefabInstanceId) {
+      _clearPrefabReservations(topCell.metadata.prefabInstanceId)
+    }
+
     // Remove khỏi buildable objects
     const idx = _buildableObjects.indexOf(topCell.mesh)
     if (idx !== -1) _buildableObjects.splice(idx, 1)
@@ -192,6 +205,13 @@ const BuildController = {
         _removeMesh(cell)
         gridManager.removeCell(x, y, z)
       }
+    } else if (command.type === 'prefab_add') {
+      for (const snap of command.cells) {
+        const cell = gridManager.getCell(snap.x, snap.y, snap.z)
+        if (!cell) continue
+        _removeMesh(cell)
+        gridManager.removeCell(snap.x, snap.y, snap.z)
+      }
     } else if (command.type === 'remove') {
       // Undo remove → re-add cell
       const { x, y, z, color, material } = command.cell
@@ -199,6 +219,7 @@ const BuildController = {
       cell.material = material ?? _resolveMaterialForCell(y)
       cell.assetType = command.cell.assetType
       cell.rotation = command.cell.rotation
+      cell.metadata = { ...(command.cell.metadata ?? {}) }
       _spawnMesh(cell)
     }
 
@@ -209,7 +230,7 @@ const BuildController = {
     _detectAndRenderBridges()
 
     // Play sound based on undo action
-    if (command.type === 'add') {
+    if (command.type === 'add' || command.type === 'prefab_add') {
       AudioSystem.playDelete()
     } else if (command.type === 'remove') {
       AudioSystem.playBuild()
@@ -226,7 +247,16 @@ const BuildController = {
       const { x, y, z, color, material } = command.cell
       const cell = gridManager.addCell(x, y, z, color)
       cell.material = material ?? _resolveMaterialForCell(y)
+      cell.metadata = { ...(command.cell.metadata ?? {}) }
       _resolveAndRespawn(cell)
+    } else if (command.type === 'prefab_add') {
+      const restored = []
+      for (const snap of command.cells) {
+        const cell = gridManager.addCell(snap.x, snap.y, snap.z, snap.color)
+        _applySnapshotToCell(cell, snap)
+        restored.push(cell)
+      }
+      for (const cell of restored) _resolveAndRespawn(cell)
     } else if (command.type === 'remove') {
       // Redo remove → delete cell
       const { x, y, z } = command.cell
@@ -237,11 +267,17 @@ const BuildController = {
       }
     }
 
-    _resolveNeighborsOf(command.cell.x, command.cell.y, command.cell.z)
+    if (command.type === 'prefab_add') {
+      for (const snap of command.cells) {
+        _resolveNeighborsOf(snap.x, snap.y, snap.z)
+      }
+    } else {
+      _resolveNeighborsOf(command.cell.x, command.cell.y, command.cell.z)
+    }
     _detectAndRenderBridges()
 
     // Play sound based on redo action
-    if (command.type === 'add') {
+    if (command.type === 'add' || command.type === 'prefab_add') {
       AudioSystem.playBuild()
     } else if (command.type === 'remove') {
       AudioSystem.playDelete()
@@ -257,6 +293,7 @@ const BuildController = {
 
   setActiveMaterial(materialId) {
     activeMaterial = materialId || 'stone_quay'
+    _syncActiveKitForSelection()
   },
 
   getActiveMaterial: () => activeMaterial,
@@ -266,6 +303,7 @@ const BuildController = {
     activeCategory = selection.category || 'auto'
     activeAssetId = selection.assetId || 'auto'
     activeAutoMode = selection.autoMode !== false
+    _syncActiveKitForSelection()
   },
 
   getBuildSelection: () => ({
@@ -315,6 +353,64 @@ function _resolveMaterialForCell(y, requestedMaterial = activeMaterial) {
   }
 
   return BUILDING_MATERIAL_ALIASES[requested] ?? requested
+}
+
+function _buildPrefab(x, z, color, prefabId) {
+  const plan = PrefabPlacementMode.createPlan(gridManager, x, z, prefabId)
+  if (!plan) {
+    console.warn(`[BuildController] Cannot place prefab ${prefabId} at ${x}_${z}`)
+    return null
+  }
+
+  const affectedCells = []
+  for (const pos of plan.affectedPositions) {
+    affectedCells.push(..._collectCellsForRefresh(pos.x, pos.y, pos.z))
+  }
+  const affectedSnapshots = _snapshotCells(affectedCells)
+  const addedCells = []
+
+  for (const spec of plan.updateCells) {
+    const cell = gridManager.getCell(spec.x, spec.y, spec.z)
+    if (!cell) continue
+    cell.metadata = { ...(cell.metadata ?? {}), ...(spec.metadata ?? {}) }
+    _resolveAndRespawn(cell)
+  }
+
+  for (const spec of plan.addCells) {
+    const cell = gridManager.addCell(spec.x, spec.y, spec.z, color)
+    cell.material = spec.material
+    cell.metadata = { ...(spec.metadata ?? {}) }
+    _resolveAndRespawn(cell)
+    addedCells.push(cell)
+  }
+
+  for (const pos of plan.affectedPositions) {
+    _resolveNeighborsOf(pos.x, pos.y, pos.z)
+  }
+
+  _detectAndRenderBridges()
+  undoStack.push({
+    type: 'prefab_add',
+    cells: addedCells.map(_snapshotCell),
+    affectedSnapshots,
+  })
+
+  AudioSystem.playBuild()
+
+  const houseCell = addedCells.find(cell => cell.metadata?.prefabId === prefabId) ?? null
+  console.log(`[BuildController] Placed prefab ${prefabId} at ${x}_1_${z}`)
+  return houseCell
+}
+
+function _clearPrefabReservations(prefabInstanceId) {
+  for (const cell of gridManager.getAllCells()) {
+    if (cell.metadata?.reservedBy !== prefabInstanceId) continue
+    const metadata = { ...(cell.metadata ?? {}) }
+    delete metadata.reservedBy
+    delete metadata.reservationRole
+    cell.metadata = metadata
+    _resolveAndRespawn(cell)
+  }
 }
 
 /**
@@ -459,6 +555,8 @@ function _buildGrammarContext(cell, neighbors, recipe = null) {
     height: cell.y,
     materialFamily: recipe?.materialFamily ?? cell.material ?? 'stone_quay',
     foundationStyle: recipe?.foundationStyle ?? (cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay'),
+    activeKit: assetManager?.getActiveKit?.() ?? 'kenney-town-kit',
+    surfaceStyle: recipe?.surfaceStyle ?? (assetManager?.getActiveKit?.() === 'kenney-city-suburban' ? 'suburban' : 'stone_quay'),
     topologySignature,
     rotation: cell.rotation,
     openDirections: recipe?.openDirections ?? openDirections,
@@ -474,6 +572,7 @@ function _buildGrammarContext(cell, neighbors, recipe = null) {
     visualRecipe: recipe,
     foundationLayer: recipe?.foundationLayer ?? [],
     surfaceLayer: recipe?.surfaceLayer ?? [],
+    prefabLayer: recipe?.prefabLayer ?? [],
     facadeLayer: recipe?.facadeLayer ?? [],
     roofLayer: recipe?.roofLayer ?? [],
     propLayer: recipe?.propLayer ?? [],
@@ -481,14 +580,28 @@ function _buildGrammarContext(cell, neighbors, recipe = null) {
 }
 
 function _buildContextSelection(cell) {
+  const activeKit = assetManager?.getActiveKit?.() ?? 'kenney-town-kit'
+  const surfaceStyle = activeMaterial === 'suburban' || activeKit === 'kenney-city-suburban'
+    ? 'suburban'
+    : 'stone_quay'
   return {
     activeMaterial,
     activeCategory,
     activeAssetId,
     autoMode: activeAutoMode,
+    activeKit,
+    surfaceStyle,
     materialFamily: cell.y === 0 ? cell.material : _resolveMaterialForCell(cell.y, cell.material),
     foundationStyle: cell.y === 0 && cell.material === 'harbor_pier' ? 'harbor_pier' : 'stone_quay',
   }
+}
+
+function _syncActiveKitForSelection() {
+  if (!assetManager?.setActiveKit) return
+  const useSuburban = activeMaterial === 'suburban' ||
+    activeCategory === 'prefab' ||
+    PrefabPlacementMode.isPrefabAsset(activeAssetId)
+  assetManager.setActiveKit(useSuburban ? 'kenney-city-suburban' : 'kenney-town-kit')
 }
 
 function _hasExteriorFace(neighbors) {
@@ -748,12 +861,7 @@ function _snapshotCells(cells) {
   const snapshots = []
   for (const cell of cells) {
     if (!cell) continue
-    snapshots.push({
-      cellId: cell.id,
-      assetType: cell.assetType,
-      rotation: cell.rotation,
-      material: cell.material,
-    })
+    snapshots.push(_snapshotCell(cell))
   }
   return snapshots
 }
@@ -765,15 +873,35 @@ function _restoreSnapshots(snapshots) {
     const cell = gridManager.getCell(x, y, z)
     if (!cell) continue
 
-    cell.assetType = snap.assetType
-    cell.rotation = snap.rotation
-    if (snap.material) cell.material = snap.material
+    _applySnapshotToCell(cell, snap)
     cell.visualRecipe = BuildingGrammarEngine.resolveCell(cell, gridManager, _buildContextSelection(cell))
 
     // Respawn với assetType đã restore
     if (cell.mesh) _removeMesh(cell)
     _spawnMesh(cell)
   }
+}
+
+function _snapshotCell(cell) {
+  return {
+    cellId: cell.id,
+    x: cell.x,
+    y: cell.y,
+    z: cell.z,
+    color: cell.color,
+    assetType: cell.assetType,
+    rotation: cell.rotation,
+    material: cell.material,
+    metadata: { ...(cell.metadata ?? {}) },
+  }
+}
+
+function _applySnapshotToCell(cell, snap) {
+  cell.color = snap.color ?? cell.color
+  cell.assetType = snap.assetType ?? cell.assetType
+  cell.rotation = snap.rotation ?? cell.rotation
+  if (snap.material) cell.material = snap.material
+  cell.metadata = { ...(snap.metadata ?? {}) }
 }
 
 export { BuildController }

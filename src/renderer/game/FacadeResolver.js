@@ -48,7 +48,8 @@ function resolve(cell, neighbors, buildContext = {}) {
 
   const family = _normalizeFamily(buildContext.materialFamily ?? cell.material)
   const topology = buildContext.topologySignature ?? openDirections.join('')
-  const canUseDoor = _canUseDoor(cell, neighbors)
+  const accessDirections = buildContext.accessDirections ?? []
+  const canUseDoor = _canUseDoor(cell, neighbors, accessDirections)
   const canUseBalcony = _canUseBalcony(cell, neighbors)
 
   return openDirections.map((direction, index) => {
@@ -59,6 +60,7 @@ function resolve(cell, neighbors, buildContext = {}) {
       index,
       openDirections,
       canUseDoor,
+      accessDirections,
       canUseBalcony,
     })
     const assetType = _assetForDetail(seed, family, detail)
@@ -77,19 +79,24 @@ function resolve(cell, neighbors, buildContext = {}) {
 }
 
 function _pickFacadeDetail(seed, context) {
-  if (context.canUseDoor && context.index === 0 && chance(`${seed}|door`, 0.15)) {
+  if (
+    context.canUseDoor &&
+    context.accessDirections.includes(context.direction) &&
+    context.index === 0 &&
+    chance(`${seed}|door`, 0.24)
+  ) {
     return 'door'
   }
 
-  if (context.canUseBalcony && chance(`${seed}|balcony`, 0.15)) {
+  if (context.canUseBalcony && chance(`${seed}|balcony`, 0.12)) {
     return 'balcony'
   }
 
-  if (chance(`${seed}|window`, 0.5)) {
+  if (chance(`${seed}|window`, 0.68)) {
     return 'window'
   }
 
-  if (chance(`${seed}|trim`, 0.1)) {
+  if (chance(`${seed}|trim`, 0.2)) {
     return 'trim'
   }
 
@@ -102,8 +109,11 @@ function _assetForDetail(seed, family, detail) {
   return pickVariant(seed, variants[detail] ?? variants.flat) ?? 'wall_flat'
 }
 
-function _canUseDoor(cell, neighbors) {
-  return cell.y === 1 && Boolean(neighbors.bottom) && getOpenDirections(neighbors).length > 0
+function _canUseDoor(cell, neighbors, accessDirections = []) {
+  return cell.y === 1 &&
+    Boolean(neighbors.bottom) &&
+    getOpenDirections(neighbors).length > 0 &&
+    accessDirections.length > 0
 }
 
 function _canUseBalcony(cell, neighbors) {

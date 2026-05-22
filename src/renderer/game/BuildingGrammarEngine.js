@@ -7,6 +7,7 @@ import { FacadeResolver } from './FacadeResolver.js'
 import { RoofResolver } from './RoofResolver.js'
 import { SurfaceResolver } from './SurfaceResolver.js'
 import { chance } from '../utils/deterministicHash.js'
+import { getPrefabAsset } from '../assets/KitRegistry.js'
 
 const FOUNDATION_MATERIALS = new Set(['stone_quay', 'stone_plaza', 'rock_edge', 'harbor_pier'])
 
@@ -24,11 +25,20 @@ function resolveCell(cell, gridManager, buildContext = {}) {
   const topology = _topologySignature(neighbors)
   const materialFamily = _resolveMaterialFamily(cell, buildContext)
   const foundationStyle = _resolveFoundationStyle(cell, buildContext)
+  const surfaceStyle = buildContext.surfaceStyle
+    ?? (buildContext.activeMaterial === 'suburban' || buildContext.activeKit === 'kenney-city-suburban' ? 'suburban' : 'stone_quay')
+  const accessDirections = _resolveAccessDirections(cell, gridManager, openDirections)
   const resolverContext = {
     ...buildContext,
     materialFamily,
     foundationStyle,
+    surfaceStyle,
+    accessDirections,
     topologySignature: topology,
+  }
+
+  if (cell.metadata?.prefabId) {
+    return _resolvePrefabCell(cell, neighbors, resolverContext, openDirections, topology)
   }
 
   const foundationLayer = FoundationTopologyResolver.resolve(cell, neighbors, resolverContext)
@@ -45,23 +55,72 @@ function resolveCell(cell, gridManager, buildContext = {}) {
     facadeLayer,
     roofLayer,
     propLayer,
+    prefabLayer: [],
     materialFamily,
     foundationStyle,
+    surfaceStyle,
     primaryAssetType: primary?.assetType ?? 'wall_flat',
     primaryRotation: primary?.rotation ?? 0,
     primaryRole: primary?.role ?? 'facade',
     openDirections,
+    accessDirections,
     primaryOpenDirection: openDirections[0] ?? 2,
     topologySignature: topology,
     foundationTopologySignature: topologySignature(openDirections),
     isExterior: openDirections.length > 0,
     hasSupport: cell.y === 0 || Boolean(neighbors.bottom),
     topExposed: !neighbors.top,
-    allowDoor: cell.y === 1 && Boolean(neighbors.bottom) && openDirections.length > 0,
+    allowDoor: cell.y === 1 && accessDirections.length > 0,
     allowWindow: cell.y > 0 && openDirections.length > 0,
     allowBalcony,
     useHighRoof: !neighbors.top && cell.y >= 3,
     tower: !neighbors.top && cell.y >= 3 && _countHorizontalNeighbors(neighbors) <= 1,
+  }
+}
+
+function _resolvePrefabCell(cell, neighbors, context, openDirections, topology) {
+  const prefabId = cell.metadata.prefabId
+  const fileName = getPrefabAsset(prefabId, 'kenney-city-suburban')
+  const prefabLayer = fileName
+    ? [{
+        assetType: prefabId,
+        role: 'prefab',
+        kitId: 'kenney-city-suburban',
+        fileName,
+        rotation: cell.metadata.prefabRotation ?? 0,
+        positionOffset: [0, 0, 0],
+        scale: cell.metadata.prefabScale ?? 1.08,
+        colorable: false,
+        entranceSide: cell.metadata.entranceSide ?? 'south',
+      }]
+    : []
+
+  return {
+    foundationLayer: [],
+    surfaceLayer: [],
+    facadeLayer: [],
+    roofLayer: [],
+    propLayer: [],
+    prefabLayer,
+    materialFamily: 'suburban',
+    foundationStyle: 'stone_quay',
+    surfaceStyle: 'suburban',
+    primaryAssetType: prefabId,
+    primaryRotation: cell.metadata.prefabRotation ?? 0,
+    primaryRole: 'prefab',
+    openDirections,
+    accessDirections: [],
+    primaryOpenDirection: openDirections[0] ?? 2,
+    topologySignature: topology,
+    foundationTopologySignature: '',
+    isExterior: openDirections.length > 0,
+    hasSupport: Boolean(neighbors.bottom),
+    topExposed: !neighbors.top,
+    allowDoor: false,
+    allowWindow: false,
+    allowBalcony: false,
+    useHighRoof: false,
+    tower: false,
   }
 }
 
@@ -127,6 +186,30 @@ function _resolveProps(cell, neighbors, context, facadeLayer, roofLayer) {
     })
   }
 
+  if (cell.y === 0 && context.surfaceStyle === 'suburban' && !neighbors.top) {
+    if (chance(`${cell.id}|${context.topologySignature}|planter`, 0.16)) {
+      props.push({
+        assetType: 'prop_planter',
+        role: 'prop',
+        rotation: 0,
+        positionOffset: [0.24, 0.52, -0.22],
+        scale: 0.42,
+        colorable: false,
+        placement: 'surface',
+      })
+    } else if (chance(`${cell.id}|${context.topologySignature}|tree`, 0.1)) {
+      props.push({
+        assetType: 'prop_tree_small',
+        role: 'prop',
+        rotation: 0,
+        positionOffset: [-0.24, 0.52, 0.2],
+        scale: 0.52,
+        colorable: false,
+        placement: 'surface',
+      })
+    }
+  }
+
   return props
 }
 
@@ -139,6 +222,24 @@ function _resolveMaterialFamily(cell, buildContext) {
 function _resolveFoundationStyle(cell, buildContext) {
   const raw = buildContext.foundationStyle ?? cell.material ?? 'stone_quay'
   return raw === 'harbor_pier' ? 'harbor_pier' : 'stone_quay'
+}
+
+function _resolveAccessDirections(cell, gridManager, openDirections) {
+  if (cell.y !== 1 || openDirections.length === 0) return []
+
+  return openDirections.filter(direction => {
+    const [dx, dz] = _directionOffset(direction)
+    const support = gridManager.getCell(cell.x + dx, cell.y - 1, cell.z + dz)
+    const blockingBuilding = gridManager.getCell(cell.x + dx, cell.y, cell.z + dz)
+    return Boolean(support) && !blockingBuilding
+  })
+}
+
+function _directionOffset(direction) {
+  if (direction === 0) return [-1, 0]
+  if (direction === 1) return [1, 0]
+  if (direction === 2) return [0, 1]
+  return [0, -1]
 }
 
 function _countHorizontalNeighbors(neighbors) {

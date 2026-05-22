@@ -25,17 +25,19 @@ function resolve(cell, neighbors, buildContext = {}) {
 
 function _resolveRoof(connected, cell, buildContext) {
   if (buildContext.materialFamily === 'tower' || cell.y >= 4) {
-    return { assetType: 'roof_peak', direction: connected[0] ?? 2 }
+    if (connected.length >= 2 && connected.length < 4) return { assetType: 'roof_high_gable', direction: connected[0] ?? 2 }
+    if (connected.length === 4) return { assetType: 'roof_high_flat', direction: 2 }
+    return { assetType: 'roof_high_point', direction: connected[0] ?? 2 }
   }
 
   if (connected.length <= 1) {
-    return { assetType: 'roof_peak', direction: connected[0] ?? 2 }
+    return { assetType: 'roof_window', direction: connected[0] ?? 2 }
   }
 
   if (connected.length === 2) {
     if (areOpposite(connected[0], connected[1])) {
       const alongX = connected.includes(0) && connected.includes(1)
-      return { assetType: 'roof_gable', direction: alongX ? 2 : 1 }
+      return { assetType: 'roof_gable_detail', direction: alongX ? 2 : 1 }
     }
     return { assetType: 'roof_hip_corner', direction: _cornerDirection(connected) }
   }

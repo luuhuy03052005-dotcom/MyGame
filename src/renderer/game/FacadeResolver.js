@@ -8,27 +8,35 @@ import {
 const FAMILY_VARIANTS = {
   plaster: {
     flat: ['wall_flat'],
-    window: ['wall_window'],
+    window: ['wall_window_small', 'wall_window_shutters', 'wall_window_round', 'wall_window_glass'],
     door: ['wall_door'],
     corner: ['wall_corner'],
+    balcony: ['balcony_wall'],
+    trim: ['wall_window_shutters', 'wall_window_round'],
   },
   wood: {
-    flat: ['wall_flat'],
-    window: ['wall_window'],
-    door: ['wall_door'],
-    corner: ['wall_corner'],
+    flat: ['wall_wood'],
+    window: ['wall_wood_window_small', 'wall_wood_window_shutters'],
+    door: ['wall_wood_door'],
+    corner: ['wall_wood'],
+    balcony: ['wall_wood_window_small'],
+    trim: ['wall_wood_window_shutters'],
   },
   stone: {
     flat: ['wall_flat'],
-    window: ['wall_window'],
+    window: ['wall_window_small', 'wall_window_round'],
     door: ['wall_door'],
     corner: ['wall_corner'],
+    balcony: ['balcony_wall'],
+    trim: ['wall_window_round'],
   },
   tower: {
     flat: ['wall_flat'],
-    window: ['wall_window'],
+    window: ['wall_window_small', 'wall_window_round'],
     door: ['wall_door'],
     corner: ['wall_corner'],
+    balcony: ['wall_window_round'],
+    trim: ['wall_window_round'],
   },
 }
 
@@ -69,20 +77,20 @@ function resolve(cell, neighbors, buildContext = {}) {
 }
 
 function _pickFacadeDetail(seed, context) {
-  if (context.canUseDoor && context.index === 0 && chance(`${seed}|door`, 0.22)) {
+  if (context.canUseDoor && context.index === 0 && chance(`${seed}|door`, 0.15)) {
     return 'door'
   }
 
-  if (context.canUseBalcony && chance(`${seed}|balcony`, 0.18)) {
+  if (context.canUseBalcony && chance(`${seed}|balcony`, 0.15)) {
     return 'balcony'
   }
 
-  if (chance(`${seed}|window`, 0.58)) {
+  if (chance(`${seed}|window`, 0.5)) {
     return 'window'
   }
 
-  if (context.openDirections.length >= 2 && chance(`${seed}|corner`, 0.2)) {
-    return 'corner'
+  if (chance(`${seed}|trim`, 0.1)) {
+    return 'trim'
   }
 
   return 'flat'
@@ -90,9 +98,7 @@ function _pickFacadeDetail(seed, context) {
 
 function _assetForDetail(seed, family, detail) {
   const variants = FAMILY_VARIANTS[family] ?? FAMILY_VARIANTS.plaster
-  if (detail === 'balcony') {
-    return pickVariant(seed, variants.window) ?? 'wall_window'
-  }
+  if (detail === 'balcony') return pickVariant(seed, variants.balcony) ?? 'balcony_wall'
   return pickVariant(seed, variants[detail] ?? variants.flat) ?? 'wall_flat'
 }
 

@@ -31,6 +31,7 @@ import { NuggetEnvironmentManager as CoastletEnvironmentManager } from './world/
 import { GridManager }          from './game/GridManager.js'
 import { ProceduralRuleEngine } from './game/ProceduralRuleEngine.js'
 import { BuildingGrammarEngine } from './game/BuildingGrammarEngine.js'
+import { VisualRecipeRenderer } from './game/VisualRecipeRenderer.js'
 import { BuildController }      from './game/BuildController.js'
 import { UndoRedoStack }        from './game/UndoRedoStack.js'
 import { WorldSerializer }      from './game/WorldSerializer.js'
@@ -406,7 +407,13 @@ function _loadWorldFromJson(jsonString) {
         cell.assetType = recipe.primaryAssetType ?? cell.assetType
         cell.rotation = recipe.primaryRotation ?? cell.rotation
 
-        const mesh = AssetManager.get(cell.assetType, cell.material, cell.id, _buildLoadGrammarContext(cell, neighbors, recipe))
+        let mesh
+        try {
+          mesh = VisualRecipeRenderer.createCellGroup(cell, recipe, AssetManager)
+        } catch (err) {
+          console.warn('[app.js] VisualRecipeRenderer failed during load, using primary asset fallback', err)
+          mesh = AssetManager.get(cell.assetType, cell.material, cell.id, _buildLoadGrammarContext(cell, neighbors, recipe))
+        }
         _applyColorToMesh(mesh, cell.color)
         mesh.position.set(cell.x, cell.y + 0.5, cell.z)
         mesh.rotation.y = cell.rotation
@@ -538,6 +545,7 @@ function _buildLoadGrammarContext(cell, neighbors, recipe = null) {
     tower: recipe?.tower ?? (!hasTop && cell.y >= 3),
     visualRecipe: recipe,
     foundationLayer: recipe?.foundationLayer ?? [],
+    surfaceLayer: recipe?.surfaceLayer ?? [],
     facadeLayer: recipe?.facadeLayer ?? [],
     roofLayer: recipe?.roofLayer ?? [],
     propLayer: recipe?.propLayer ?? [],

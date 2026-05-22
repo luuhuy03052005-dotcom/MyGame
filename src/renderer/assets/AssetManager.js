@@ -34,6 +34,52 @@ let _ready = false
 
 const MATERIAL_IDS = BUILD_MATERIALS.map(material => material.id)
 const VISUAL_VARIANT_COUNT = 3
+const RAW_MODEL_PRELOAD_FILES = [
+  'planks.glb',
+  'pillar-wood.glb',
+  'road.glb',
+  'road-edge.glb',
+  'road-corner.glb',
+  'road-corner-inner.glb',
+  'road-bend.glb',
+  'road-curb.glb',
+  'road-curb-end.glb',
+  'wall-arch.glb',
+  'wall-arch-top.glb',
+  'wall-block.glb',
+  'wall-corner-edge.glb',
+  'wall-rounded.glb',
+  'rock-small.glb',
+  'rock-wide.glb',
+  'rock-large.glb',
+  'wall.glb',
+  'wall-window-small.glb',
+  'wall-window-shutters.glb',
+  'wall-window-round.glb',
+  'wall-window-glass.glb',
+  'wall-door.glb',
+  'wall-corner.glb',
+  'wall-wood.glb',
+  'wall-wood-window-small.glb',
+  'wall-wood-window-shutters.glb',
+  'wall-wood-door.glb',
+  'balcony-wall.glb',
+  'balcony-wall-fence.glb',
+  'overhang.glb',
+  'roof-point.glb',
+  'roof-window.glb',
+  'roof-gable.glb',
+  'roof-gable-detail.glb',
+  'roof-flat.glb',
+  'roof-corner.glb',
+  'roof-corner-inner.glb',
+  'roof-gable-top.glb',
+  'roof-high-point.glb',
+  'roof-high-gable.glb',
+  'roof-high-flat.glb',
+  'chimney.glb',
+  'lantern.glb',
+]
 
 const MODEL_PATHS = {
   foundation_seawall_straight: 'wall-arch.glb',
@@ -48,6 +94,20 @@ const MODEL_PATHS = {
   foundation_arch: 'pillar-stone.glb',
   foundation_solid: 'road.glb',
   foundation_wall: 'wall-block.glb',
+  surface_building_footprint: 'road-curb.glb',
+  surface_plaza_center: 'road.glb',
+  surface_plaza_edge: 'road-edge.glb',
+  surface_plaza_corner: 'road-corner.glb',
+  surface_walkway_straight: 'road.glb',
+  surface_walkway_corner: 'road-bend.glb',
+  surface_walkway_t: 'road-corner-inner.glb',
+  surface_walkway_cross: 'road.glb',
+  surface_walkway_end: 'road-curb-end.glb',
+  surface_entrance: 'road-curb.glb',
+  surface_quay_promenade: 'road-edge.glb',
+  surface_quay_corner: 'road-corner.glb',
+  surface_garden_patch: 'hedge.glb',
+  surface_waterfront_step: 'stairs-stone.glb',
   wall_mid: 'wall.glb',
 
   wall_flat: 'wall.glb',
@@ -77,6 +137,20 @@ const MODEL_SCALE_OVERRIDES = {
   foundation_arch: 1.0,
   foundation_solid: 1.0,
   foundation_wall: 1.0,
+  surface_building_footprint: 1.0,
+  surface_plaza_center: 1.0,
+  surface_plaza_edge: 1.0,
+  surface_plaza_corner: 1.0,
+  surface_walkway_straight: 1.0,
+  surface_walkway_corner: 1.0,
+  surface_walkway_t: 1.0,
+  surface_walkway_cross: 1.0,
+  surface_walkway_end: 1.0,
+  surface_entrance: 1.0,
+  surface_quay_promenade: 1.0,
+  surface_quay_corner: 1.0,
+  surface_garden_patch: 1.0,
+  surface_waterfront_step: 1.0,
   wall_flat: 1.0,
   wall_window: 1.0,
   wall_corner: 1.0,
@@ -137,6 +211,7 @@ const MODEL_FILE_URLS = {
   'rock-small.glb': new URL('./models/kenney-town-kit/rock-small.glb', import.meta.url).href,
   'rock-wide.glb': new URL('./models/kenney-town-kit/rock-wide.glb', import.meta.url).href,
   'rock-large.glb': new URL('./models/kenney-town-kit/rock-large.glb', import.meta.url).href,
+  'hedge.glb': new URL('./models/kenney-town-kit/hedge.glb', import.meta.url).href,
   'stairs-stone.glb': new URL('./models/kenney-town-kit/stairs-stone.glb', import.meta.url).href,
   'stairs-wide-stone.glb': new URL('./models/kenney-town-kit/stairs-wide-stone.glb', import.meta.url).href,
   'fence.glb': new URL('./models/kenney-town-kit/fence.glb', import.meta.url).href,
@@ -550,6 +625,62 @@ const PLACEHOLDER_DEFS = {
     new THREE.BoxGeometry(1.08, 1, 1.08),
     STONE_QUAY_COLOR
   ),
+  surface_building_footprint: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.72, 0.04, 0.72),
+    0xb7b3a6
+  ),
+  surface_plaza_center: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.94, 0.04, 0.94),
+    0xa4a9aa
+  ),
+  surface_plaza_edge: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.94, 0.04, 0.82),
+    0x9aa2a6
+  ),
+  surface_plaza_corner: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.82, 0.04, 0.82),
+    0x9aa2a6
+  ),
+  surface_walkway_straight: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.86, 0.04, 0.38),
+    0x9aa2a6
+  ),
+  surface_walkway_corner: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.68, 0.04, 0.68),
+    0x9aa2a6
+  ),
+  surface_walkway_t: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.88, 0.04, 0.88),
+    0x9aa2a6
+  ),
+  surface_walkway_cross: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.88, 0.04, 0.88),
+    0x9aa2a6
+  ),
+  surface_walkway_end: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.72, 0.04, 0.38),
+    0x9aa2a6
+  ),
+  surface_entrance: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.78, 0.04, 0.5),
+    0xc2bdad
+  ),
+  surface_quay_promenade: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.96, 0.04, 0.58),
+    0x8f968f
+  ),
+  surface_quay_corner: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.88, 0.04, 0.88),
+    0x8f968f
+  ),
+  surface_garden_patch: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.72, 0.04, 0.72),
+    0x9fbf9a
+  ),
+  surface_waterfront_step: () => _makePlaceholder(
+    new THREE.BoxGeometry(0.82, 0.08, 0.42),
+    0xb9b5a6
+  ),
   foundation_solid: () => _makePlaceholder(
     new THREE.BoxGeometry(0.99, 1, 0.99),
     0x8B7355  // màu bê tông/móng gỗ
@@ -788,6 +919,14 @@ const AssetManager = {
       }
     }
 
+    for (const fileName of RAW_MODEL_PRELOAD_FILES) {
+      try {
+        await _loadRawModel(fileName)
+      } catch (err) {
+        console.warn(`[AssetManager] Raw GLB preload failed for ${fileName}`, err)
+      }
+    }
+
     _ready = true
     console.log(`[AssetManager] Ready — ${_cache.size} GLB assets, ${_placeholderCache.size} placeholder fallbacks`)
     window.dispatchEvent(new CustomEvent('assetmanager:ready'))
@@ -824,6 +963,21 @@ const AssetManager = {
       proto = _buildPlaceholder(assetType)
     }
     return _clonePrototype(proto)
+  },
+
+  getRaw(fileName, options = {}) {
+    const raw = _rawModelCache.get(fileName)
+    if (!raw) {
+      throw new Error(`[AssetManager] Raw GLB '${fileName}' is not preloaded`)
+    }
+
+    const clone = _clonePrototype(raw)
+    normalizeToCell(clone, options.size ?? 1, {
+      centerXZ: options.centerXZ !== false,
+      alignBottomY: options.alignBottomY ?? -0.5,
+    })
+    _prepareModelMeshes(clone, options.assetType ?? fileName, options.colorable ?? false, options.materialRole)
+    return clone
   },
 
   isReady: () => _ready,
@@ -1560,7 +1714,7 @@ function _prepareModel(prototype, assetType) {
   _prepareModelMeshes(prototype, assetType)
 }
 
-function _prepareModelMeshes(object, assetType, forceColorable = null) {
+function _prepareModelMeshes(object, assetType, forceColorable = null, materialRole = null) {
   object.traverse((child) => {
     if (!child.isMesh) return
 
@@ -1571,6 +1725,10 @@ function _prepareModelMeshes(object, assetType, forceColorable = null) {
     const materialList = Array.isArray(child.material) ? child.material : [child.material]
     for (const material of materialList) {
       if (!material) continue
+      if (material.map) {
+        material.map.colorSpace = THREE.SRGBColorSpace
+        material.map.needsUpdate = true
+      }
       if ('roughness' in material) material.roughness = 0.85
       if ('metalness' in material) material.metalness = 0
       material.needsUpdate = true
@@ -1580,10 +1738,10 @@ function _prepareModelMeshes(object, assetType, forceColorable = null) {
     const inferredColorable = (
       meshName.includes('wall') ||
       meshName.includes('body') ||
-      assetType.startsWith('wall') ||
-      assetType.startsWith('foundation')
+      assetType.startsWith('wall')
     )
     child.userData.isColorable = forceColorable ?? inferredColorable
+    if (materialRole) child.userData.materialRole = materialRole
   })
 }
 

@@ -5,6 +5,7 @@ import {
 } from './FoundationTopologyResolver.js'
 import { FacadeResolver } from './FacadeResolver.js'
 import { RoofResolver } from './RoofResolver.js'
+import { SurfaceResolver } from './SurfaceResolver.js'
 import { chance } from '../utils/deterministicHash.js'
 
 const FOUNDATION_MATERIALS = new Set(['stone_quay', 'stone_plaza', 'rock_edge', 'harbor_pier'])
@@ -31,6 +32,7 @@ function resolveCell(cell, gridManager, buildContext = {}) {
   }
 
   const foundationLayer = FoundationTopologyResolver.resolve(cell, neighbors, resolverContext)
+  const surfaceLayer = SurfaceResolver.resolve(cell, gridManager, resolverContext)
   const facadeLayer = FacadeResolver.resolve(cell, neighbors, resolverContext)
   const roofLayer = RoofResolver.resolve(cell, neighbors, resolverContext)
   const propLayer = _resolveProps(cell, neighbors, resolverContext, facadeLayer, roofLayer)
@@ -39,6 +41,7 @@ function resolveCell(cell, gridManager, buildContext = {}) {
 
   return {
     foundationLayer,
+    surfaceLayer,
     facadeLayer,
     roofLayer,
     propLayer,

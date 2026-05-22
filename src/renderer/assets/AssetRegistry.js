@@ -29,6 +29,20 @@ export const ASSET_REGISTRY = {
   bridge_span:       'bridge_span.glb',
   wall_mid:         'wall_mid.glb',
   foundation_wall:  'foundation_wall.glb',
+  surface_building_footprint: 'surface_building_footprint.glb',
+  surface_plaza_center:      'surface_plaza_center.glb',
+  surface_plaza_edge:        'surface_plaza_edge.glb',
+  surface_plaza_corner:      'surface_plaza_corner.glb',
+  surface_walkway_straight:  'surface_walkway_straight.glb',
+  surface_walkway_corner:    'surface_walkway_corner.glb',
+  surface_walkway_t:         'surface_walkway_t.glb',
+  surface_walkway_cross:     'surface_walkway_cross.glb',
+  surface_walkway_end:       'surface_walkway_end.glb',
+  surface_entrance:          'surface_entrance.glb',
+  surface_quay_promenade:    'surface_quay_promenade.glb',
+  surface_quay_corner:       'surface_quay_corner.glb',
+  surface_garden_patch:      'surface_garden_patch.glb',
+  surface_waterfront_step:   'surface_waterfront_step.glb',
   _fallback:         '_fallback_cube.glb',  // LUÔN phải resolve được
 }
 

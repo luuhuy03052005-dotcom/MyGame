@@ -36,6 +36,7 @@ import { RenderLoop }  from '../engine/RenderLoop.js'
 import { AudioSystem } from '../engine/AudioSystem.js'
 import { ParticleSystem } from '../engine/ParticleSystem.js'
 import { BuildingGrammarEngine } from './BuildingGrammarEngine.js'
+import { VisualRecipeRenderer } from './VisualRecipeRenderer.js'
 
 const CELL_SIZE = 1
 const CELL_HEIGHT = 1
@@ -365,7 +366,13 @@ function _spawnMesh(cell) {
   cell.rotation = recipe.primaryRotation ?? cell.rotation
 
   const grammar = _buildGrammarContext(cell, neighbors, recipe)
-  const proto = assetManager.get(cell.assetType, cell.material, cell.id, grammar)
+  let proto
+  try {
+    proto = VisualRecipeRenderer.createCellGroup(cell, recipe, assetManager)
+  } catch (err) {
+    console.warn('[BuildController] VisualRecipeRenderer failed, using primary asset fallback', err)
+    proto = assetManager.get(cell.assetType, cell.material, cell.id, grammar)
+  }
 
   // Apply cell color
   _applyColor(proto, cell.color)
@@ -376,10 +383,14 @@ function _spawnMesh(cell) {
     cell.y * CELL_HEIGHT + CELL_HEIGHT / 2,
     cell.z * CELL_SIZE
   )
-  proto.rotation.y = cell.rotation
+  proto.rotation.y = proto.userData?.visualRecipe ? 0 : cell.rotation
 
   // Tag userData
-  proto.userData = { cellId: cell.id, isBuilding: true }
+  proto.userData = {
+    ...proto.userData,
+    cellId: cell.id,
+    isBuilding: true,
+  }
   proto.name = 'building'
 
   // Bắt đầu từ scale=0 → animation smooth
@@ -462,6 +473,7 @@ function _buildGrammarContext(cell, neighbors, recipe = null) {
     tower: recipe?.tower ?? (cell.y >= 3 && _countHorizontalNeighbors(neighbors) <= 1),
     visualRecipe: recipe,
     foundationLayer: recipe?.foundationLayer ?? [],
+    surfaceLayer: recipe?.surfaceLayer ?? [],
     facadeLayer: recipe?.facadeLayer ?? [],
     roofLayer: recipe?.roofLayer ?? [],
     propLayer: recipe?.propLayer ?? [],

@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { GridManager } from '../src/renderer/game/GridManager.js'
 import { BuildingGrammarEngine } from '../src/renderer/game/BuildingGrammarEngine.js'
+import { VisualRecipeRenderer } from '../src/renderer/game/VisualRecipeRenderer.js'
 import { hashString, pickVariant, chance } from '../src/renderer/utils/deterministicHash.js'
+import * as THREE from 'three'
 
 function addCell(x, y, z, material = 'stone_quay') {
   const cell = GridManager.addCell(x, y, z, '#F5DEB3')
@@ -56,6 +58,35 @@ describe('BuildingGrammarEngine — Foundation topology', () => {
     expect(recipe.foundationStyle).toBe('harbor_pier')
     expect(['foundation_arch', 'foundation_solid']).toContain(recipe.primaryAssetType)
   })
+
+  it('foundation cells include a separate surface layer', () => {
+    const cell = addCell(0, 0, 0)
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager)
+
+    expect(recipe.surfaceLayer).toHaveLength(1)
+    expect(recipe.surfaceLayer[0].role).toBe('surface')
+    expect(recipe.surfaceLayer[0].assetType).toBe('surface_quay_corner')
+    expect(recipe.surfaceLayer[0].positionOffset[1]).toBeGreaterThan(0.4)
+  })
+
+  it('foundation under a building uses building footprint surface, not a plaza road tile', () => {
+    const foundation = addCell(0, 0, 0)
+    addCell(0, 1, 0, 'plaster')
+
+    const recipe = BuildingGrammarEngine.resolveCell(foundation, GridManager)
+    expect(recipe.surfaceLayer[0].assetType).toBe('surface_building_footprint')
+  })
+
+  it('interior empty foundation resolves to plaza surface', () => {
+    const center = addCell(0, 0, 0)
+    addCell(-1, 0, 0)
+    addCell(1, 0, 0)
+    addCell(0, 0, 1)
+    addCell(0, 0, -1)
+
+    const recipe = BuildingGrammarEngine.resolveCell(center, GridManager)
+    expect(recipe.surfaceLayer[0].assetType).toBe('surface_plaza_center')
+  })
 })
 
 describe('BuildingGrammarEngine — Facade and roof grammar', () => {
@@ -86,7 +117,7 @@ describe('BuildingGrammarEngine — Facade and roof grammar', () => {
 
     expect(lowerRecipe.roofLayer).toHaveLength(0)
     expect(topRecipe.roofLayer).toHaveLength(1)
-    expect(topRecipe.roofLayer[0].assetType).toBe('roof_peak')
+    expect(topRecipe.roofLayer[0].assetType).toBe('roof_window')
   })
 
   it('same topology and material resolve deterministically', () => {
@@ -97,6 +128,73 @@ describe('BuildingGrammarEngine — Facade and roof grammar', () => {
     const second = BuildingGrammarEngine.resolveCell(cell, GridManager)
 
     expect(second).toEqual(first)
+  })
+})
+
+describe('VisualRecipeRenderer', () => {
+  beforeEach(() => {
+    GridManager.clear()
+  })
+
+  it('renders recipe as real layer groups instead of one primary asset', () => {
+    const foundation = addCell(0, 0, 0)
+    const cell = addCell(0, 1, 0, 'plaster')
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager)
+    const fakeAssetManager = {
+      getRaw(fileName) {
+        const group = new THREE.Group()
+        group.name = fileName
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.2, 0.2, 0.2),
+          new THREE.MeshBasicMaterial()
+        )
+        group.add(mesh)
+        return group
+      },
+    }
+
+    const group = VisualRecipeRenderer.createCellGroup(cell, recipe, fakeAssetManager)
+    const layerNames = group.children.map(child => child.name)
+    const facadeLayer = group.children.find(child => child.name === 'facadeLayer')
+    const roofLayer = group.children.find(child => child.name === 'roofLayer')
+    const facadeNames = []
+    const roofNames = []
+    facadeLayer.traverse(child => facadeNames.push(child.name))
+    roofLayer.traverse(child => roofNames.push(child.name))
+
+    expect(foundation.id).toBe('0_0_0')
+    expect(group.userData.visualRecipe).toBe(recipe)
+    expect(layerNames).toContain('facadeLayer')
+    expect(layerNames).toContain('roofLayer')
+    expect(facadeNames).toContain('building_body_core')
+    expect(facadeNames.some(name => name.endsWith('.glb'))).toBe(false)
+    expect(roofNames.some(name => name.endsWith('.glb'))).toBe(false)
+    expect(roofNames.some(name => name.startsWith('roof_'))).toBe(true)
+    expect(group.userData.isBuilding).toBe(true)
+  })
+
+  it('renders surfaceLayer on foundation cells', () => {
+    const cell = addCell(0, 0, 0)
+    const recipe = BuildingGrammarEngine.resolveCell(cell, GridManager)
+    const fakeAssetManager = {
+      getRaw(fileName) {
+        const group = new THREE.Group()
+        group.name = fileName
+        group.add(new THREE.Mesh(
+          new THREE.BoxGeometry(0.2, 0.2, 0.2),
+          new THREE.MeshBasicMaterial()
+        ))
+        return group
+      },
+    }
+
+    const group = VisualRecipeRenderer.createCellGroup(cell, recipe, fakeAssetManager)
+    const layerNames = group.children.map(child => child.name)
+    const surfaceLayer = group.children.find(child => child.name === 'surfaceLayer')
+
+    expect(layerNames).toContain('foundationLayer')
+    expect(layerNames).toContain('surfaceLayer')
+    expect(surfaceLayer.children.some(child => child.name === 'surface_stone_underlay')).toBe(true)
   })
 })
 

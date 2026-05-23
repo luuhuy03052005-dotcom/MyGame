@@ -24,6 +24,10 @@ const FOUNDATION_SIDE_Y = 0
 const SURFACE_BASE_Y = 0.485
 const SURFACE_RAW_BOTTOM_Y = 0.455
 const SURFACE_ACCENT_Y = 0.535
+const BODY_HEIGHT = 0.98
+const BODY_Y = -0.01
+const FACADE_PANEL_HEIGHT = 0.96
+const FACADE_PANEL_Y = -0.01
 
 const FALLBACK_ASSETS = {
   wall_window_small: 'wall_window',
@@ -179,6 +183,11 @@ function _renderSurface(layer, surfaceLayer, assetManager, cell) {
     layer.add(_surfaceUnderlay(item, x, z))
 
     const kitId = _surfaceKitId(item, assetManager)
+    if (_renderSuburbanCompositeSurface(layer, item, assetManager, kitId, x, z)) {
+      _addSurfaceAccents(layer, item)
+      continue
+    }
+
     const surface = _raw(assetManager, _surfaceFile(item, kitId), {
       assetType: item.assetType,
       size: _surfaceSize(item),
@@ -194,6 +203,52 @@ function _renderSurface(layer, surfaceLayer, assetManager, cell) {
 
     _addSurfaceAccents(layer, item)
   }
+}
+
+function _renderSuburbanCompositeSurface(layer, item, assetManager, kitId, x, z) {
+  if (kitId !== 'kenney-city-suburban') return false
+  if (!['surface_walkway_corner', 'surface_walkway_t', 'surface_walkway_cross'].includes(item.assetType)) {
+    return false
+  }
+
+  const connections = item.walkConnections?.length
+    ? item.walkConnections
+    : item.assetType === 'surface_walkway_cross'
+      ? [0, 1, 2, 3]
+      : item.assetType === 'surface_walkway_t'
+        ? [0, 1, 2]
+        : [1, 2]
+
+  for (const direction of connections) {
+    const side = _sideTransform(direction)
+    const part = _raw(assetManager, 'path-short.glb', {
+      assetType: item.assetType,
+      size: 0.76,
+      colorable: false,
+      materialRole: 'surfaceStone',
+      alignBottomY: SURFACE_RAW_BOTTOM_Y,
+      kitId,
+    })
+    part.position.set(x + side.x * 0.16, 0, z + side.z * 0.16)
+    part.rotation.y = side.rotation
+    part.userData.materialRole = 'surfaceStone'
+    layer.add(part)
+  }
+
+  if (item.assetType === 'surface_walkway_cross') {
+    const center = _raw(assetManager, 'path-stones-short.glb', {
+      assetType: item.assetType,
+      size: 0.48,
+      colorable: false,
+      materialRole: 'surfaceStone',
+      alignBottomY: SURFACE_RAW_BOTTOM_Y + 0.006,
+      kitId,
+    })
+    center.position.set(x, 0, z)
+    layer.add(center)
+  }
+
+  return true
 }
 
 function _renderPrefabs(layer, prefabLayer, assetManager) {
@@ -219,10 +274,18 @@ function _renderPrefabs(layer, prefabLayer, assetManager) {
 
 function _addBuildingFootprintSurface(layer, item) {
   const [x, , z] = item.positionOffset ?? [0, 0, 0]
-  layer.add(_box('surface_building_footprint_inset', [0.72, 0.035, 0.72], [x, SURFACE_BASE_Y, z], 0xb7b3a6, {
+  layer.add(_box('surface_building_footprint_inset', [0.84, 0.03, 0.84], [x, SURFACE_BASE_Y, z], 0xbab6a6, {
     materialRole: 'surfaceStone',
     colorable: false,
     roughness: 0.9,
+  }))
+  layer.add(_box('surface_building_footprint_trim_x', [0.88, 0.018, 0.06], [x, SURFACE_ACCENT_Y, z - 0.42], 0x9aa19a, {
+    materialRole: 'surfaceStone',
+    colorable: false,
+  }))
+  layer.add(_box('surface_building_footprint_trim_z', [0.06, 0.018, 0.88], [x - 0.42, SURFACE_ACCENT_Y, z], 0x9aa19a, {
+    materialRole: 'surfaceStone',
+    colorable: false,
   }))
 }
 
@@ -284,7 +347,15 @@ function _addSurfaceAccents(layer, item) {
   }
 
   if (role === 'plaza') {
-    layer.add(_box('surface_plaza_inset', [0.58, 0.014, 0.58], [0, y, 0], 0xa4a9aa, {
+    layer.add(_box('surface_plaza_inset', [0.52, 0.014, 0.52], [0, y, 0], 0xa4a9aa, {
+      materialRole: 'surfaceStone',
+      colorable: false,
+    }))
+    layer.add(_box('surface_plaza_joint_x', [0.72, 0.012, 0.035], [0, y + 0.006, 0], 0x8f9797, {
+      materialRole: 'surfaceStone',
+      colorable: false,
+    }))
+    layer.add(_box('surface_plaza_joint_z', [0.035, 0.012, 0.72], [0, y + 0.006, 0], 0x8f9797, {
       materialRole: 'surfaceStone',
       colorable: false,
     }))
@@ -361,8 +432,9 @@ function _renderFacades(layer, facadeLayer, assetManager, cell, recipe = {}) {
   const family = _facadeFamily(recipe, cell)
   const bodyColor = _facadeBodyColor(family)
   const isWood = family === 'wood'
+  const bodyWidth = family === 'tower' ? 0.78 : 0.82
 
-  layer.add(_box('building_body_core', [0.82, 0.84, 0.82], [0, -0.05, 0], bodyColor, {
+  layer.add(_box('building_body_core', [bodyWidth, BODY_HEIGHT, bodyWidth], [0, BODY_Y, 0], bodyColor, {
     materialRole: isWood ? 'wood' : 'wallBody',
     colorable: !isWood,
     roughness: 0.88,
@@ -371,14 +443,22 @@ function _renderFacades(layer, facadeLayer, assetManager, cell, recipe = {}) {
   for (const item of facadeLayer) {
     const direction = _directionFromSide(item.side)
     const detail = item.detail ?? 'flat'
+    const glbRendered = _addFacadeModel(layer, item, assetManager, direction, family)
 
-    _addFaceBox(layer, 'wall_face_panel', direction, 0.84, 0.82, 0.028, 0.43, -0.05, 0, bodyColor, {
-      materialRole: isWood ? 'wood' : 'wallBody',
-      colorable: !isWood,
-      roughness: 0.88,
-    })
-
-    _addFacadeDetail(layer, direction, detail, item, family)
+    if (!glbRendered) {
+      _addFaceBox(layer, 'wall_face_panel', direction, 0.86, FACADE_PANEL_HEIGHT, 0.028, 0.445, FACADE_PANEL_Y, 0, bodyColor, {
+        materialRole: isWood ? 'wood' : 'wallBody',
+        colorable: !isWood,
+        roughness: 0.88,
+      })
+      _addFacadeDetail(layer, direction, detail, item, family)
+    } else {
+      if (detail === 'flat') {
+        _addFacadeBaseTrim(layer, direction, family)
+      } else {
+        _addFacadeDetail(layer, direction, detail, item, family)
+      }
+    }
 
     if (detail === 'balcony' || item.assetType === 'balcony_wall') {
       _addBalcony(layer, direction)
@@ -388,6 +468,39 @@ function _renderFacades(layer, facadeLayer, assetManager, cell, recipe = {}) {
       _addDoorStep(layer, direction)
     }
 
+  }
+}
+
+function _addFacadeModel(layer, item, assetManager, direction, family) {
+  const fileName = _facadeFile(item)
+  if (!fileName) return false
+
+  try {
+    const facade = _raw(assetManager, fileName, {
+      assetType: item.assetType,
+      size: family === 'tower' ? 0.98 : 0.96,
+      colorable: false,
+      materialRole: family === 'wood' ? 'wood' : 'facadeKit',
+      alignBottomY: -0.5,
+      kitId: 'kenney-town-kit',
+    })
+    const side = _sideTransform(direction)
+    const alongX = direction === 2 || direction === 3
+    facade.name = `facade_${item.assetType}_${fileName}`
+    // Kit wall modules are authored as full-cell cubes. In the recipe renderer
+    // they represent only one exposed side, so flatten their local depth and
+    // park them on the exterior face instead of stacking full cubes together.
+    facade.scale.z *= 0.08
+    facade.position.x += side.x * (alongX ? 0 : 0.475)
+    facade.position.z += side.z * (alongX ? 0.475 : 0)
+    facade.rotation.y += side.rotation
+    facade.userData.materialRole = family === 'wood' ? 'wood' : 'facadeKit'
+    facade.userData.isColorable = false
+    layer.add(facade)
+    return true
+  } catch (err) {
+    console.warn(`[VisualRecipeRenderer] Facade GLB fallback for ${item.assetType}`, err)
+    return false
   }
 }
 
@@ -478,6 +591,14 @@ function _addFacadeFlatTrim(layer, direction, family) {
   })
 }
 
+function _addFacadeBaseTrim(layer, direction, family) {
+  const trimColor = family === 'wood' ? COLORS.darkWood : COLORS.trim
+  _addFaceBox(layer, 'facade_base_trim', direction, 0.52, 0.035, 0.035, 0.487, -0.35, 0, trimColor, {
+    materialRole: 'trim',
+    colorable: false,
+  })
+}
+
 function _addFacadeOverhang(layer, direction, family) {
   const trimColor = family === 'wood' ? COLORS.darkWood : COLORS.trim
   _addFaceBox(layer, 'facade_overhang', direction, 0.74, 0.06, 0.16, 0.55, 0.31, 0, trimColor, {
@@ -527,7 +648,33 @@ function _addFaceBox(layer, name, direction, width, height, depth, faceOffset, y
 
 function _renderRoofs(layer, roofLayer, assetManager) {
   for (const item of roofLayer) {
+    if (_addRoofModel(layer, item, assetManager)) continue
     _addProceduralRoof(layer, item)
+  }
+}
+
+function _addRoofModel(layer, item, assetManager) {
+  const fileName = _roofFile(item)
+  if (!fileName) return false
+
+  try {
+    const roof = _raw(assetManager, fileName, {
+      assetType: item.assetType,
+      size: item.assetType?.startsWith('roof_high') ? 1.08 : 1.02,
+      colorable: false,
+      materialRole: 'roof',
+      alignBottomY: 0.36,
+      kitId: 'kenney-town-kit',
+    })
+    roof.name = `roof_${item.assetType}_${fileName}`
+    roof.rotation.y += item.rotation ?? 0
+    roof.userData.materialRole = 'roof'
+    roof.userData.isColorable = false
+    layer.add(roof)
+    return true
+  } catch (err) {
+    console.warn(`[VisualRecipeRenderer] Roof GLB fallback for ${item.assetType}`, err)
+    return false
   }
 }
 
@@ -655,7 +802,16 @@ function _roofFootprint(item) {
 
 function _renderProps(layer, propLayer, assetManager) {
   for (const item of propLayer) {
+    if (item.assetType?.startsWith('waterline_')) {
+      _renderWaterlineDetail(layer, item, assetManager)
+      continue
+    }
+
     if (item.assetType?.startsWith('prop_')) {
+      if (item.assetType === 'prop_plaza_planter') {
+        _renderProceduralPlanter(layer, item)
+        continue
+      }
       _renderSuburbanProp(layer, item, assetManager)
       continue
     }
@@ -668,6 +824,7 @@ function _renderProps(layer, propLayer, assetManager) {
         materialRole: 'stone',
       })
       chimney.position.set(...(item.positionOffset ?? [0.22, 0.44, -0.18]))
+      chimney.userData.aliveType = item.aliveType
       layer.add(chimney)
     }
 
@@ -682,28 +839,93 @@ function _renderProps(layer, propLayer, assetManager) {
       })
       lantern.position.set(side.x * 0.58, -0.03, side.z * 0.58)
       lantern.rotation.y = side.rotation
+      lantern.userData.aliveType = item.aliveType
       layer.add(lantern)
     }
   }
 }
 
+function _renderWaterlineDetail(layer, item, assetManager) {
+  const direction = item.direction ?? _directionFromSide(item.side)
+  const side = _sideTransform(direction)
+  const alongX = direction === 2 || direction === 3
+
+  if (item.assetType === 'waterline_wet_stone') {
+    layer.add(_box('waterline_wet_stone_strip', alongX ? [0.82, 0.035, 0.04] : [0.04, 0.035, 0.82], [side.x * 0.57, -0.43, side.z * 0.57], COLORS.wetStone, {
+      materialRole: 'wetStone',
+      colorable: false,
+      roughness: 0.94,
+    }))
+    return
+  }
+
+  if (item.assetType === 'waterline_foam_marker') {
+    const foam = _box('waterline_foam_marker', alongX ? [0.64, 0.012, 0.055] : [0.055, 0.012, 0.64], [side.x * 0.64, -0.47, side.z * 0.64], 0xdceaf1, {
+      materialRole: 'foam',
+      colorable: false,
+      roughness: 0.7,
+    })
+    foam.userData.aliveType = 'foamPulse'
+    layer.add(foam)
+    return
+  }
+
+  if (item.assetType === 'waterline_rock_edge') {
+    const rock = _raw(assetManager, 'rock-wide.glb', {
+      assetType: 'foundation_rock_edge',
+      size: item.scale ?? 0.42,
+      colorable: false,
+      materialRole: 'stone',
+      kitId: item.kitId ?? 'kenney-town-kit',
+    })
+    rock.position.set(side.x * 0.68, -0.48, side.z * 0.68)
+    rock.rotation.y = side.rotation
+    layer.add(rock)
+  }
+}
+
+function _renderProceduralPlanter(layer, item) {
+  const [x, , z] = item.positionOffset ?? [0, 0, 0]
+  const baseY = SURFACE_ACCENT_Y + 0.04
+  layer.add(_box('plaza_planter_base', [0.34, 0.09, 0.34], [x, baseY, z], 0x8f7355, {
+    materialRole: 'stone',
+    colorable: false,
+    roughness: 0.9,
+  }))
+  layer.add(_box('plaza_planter_greenery', [0.26, 0.08, 0.26], [x, baseY + 0.08, z], 0x6f9f75, {
+    materialRole: 'prop',
+    colorable: false,
+    roughness: 0.82,
+  }))
+}
+
 function _renderSuburbanProp(layer, item, assetManager) {
   const kitId = item.kitId ?? 'kenney-city-suburban'
   const fileName = getSemanticAsset('props', item.assetType, kitId)
+    ?? getSemanticAsset('props', item.assetType, 'kenney-town-kit')
   if (!fileName) return
 
+  const isFacadeProp = item.placement === 'facade' && item.side
   const prop = _raw(assetManager, fileName, {
     assetType: item.assetType,
     size: item.scale ?? _propSize(item.assetType),
     colorable: false,
     materialRole: 'prop',
-    alignBottomY: SURFACE_ACCENT_Y,
+    alignBottomY: isFacadeProp ? -0.45 : SURFACE_ACCENT_Y,
     kitId,
   })
   const [x, , z] = item.positionOffset ?? [0, 0, 0]
-  prop.position.set(x, 0, z)
-  prop.rotation.y = item.rotation ?? 0
+  if (isFacadeProp) {
+    const direction = _directionFromSide(item.side)
+    const side = _sideTransform(direction)
+    prop.position.set(side.x * 0.56 + x, item.positionOffset?.[1] ?? 0, side.z * 0.56 + z)
+    prop.rotation.y = side.rotation
+  } else {
+    prop.position.set(x, 0, z)
+    prop.rotation.y = item.rotation ?? 0
+  }
   prop.userData.materialRole = 'prop'
+  if (item.aliveType) prop.userData.aliveType = item.aliveType
   layer.add(prop)
 }
 
@@ -772,6 +994,16 @@ function _surfaceKitId(item, assetManager) {
 }
 
 function _propSize(assetType) {
+  if (assetType?.startsWith('prop_fence_3')) return 0.82
+  if (assetType?.startsWith('prop_fence_2')) return 0.74
+  if (assetType?.startsWith('prop_fence_1x4')) return 0.78
+  if (assetType?.startsWith('prop_fence_1x3')) return 0.68
+  if (assetType?.startsWith('prop_fence')) return 0.58
+  if (assetType?.startsWith('prop_fountain')) return 0.58
+  if (assetType === 'prop_stall') return 0.54
+  if (assetType === 'prop_cart') return 0.44
+  if (assetType?.startsWith('prop_banner')) return 0.34
+  if (assetType === 'prop_hedge') return 0.5
   if (assetType === 'prop_tree_large') return 0.72
   if (assetType === 'prop_tree_small') return 0.56
   if (assetType === 'prop_planter') return 0.42

@@ -26,7 +26,7 @@ function resolve(cell, neighbors, buildContext = {}) {
 }
 
 function _resolveRoof(connected, cell, buildContext) {
-  if (buildContext.materialFamily === 'tower' || cell.y >= 4) {
+  if (buildContext.materialFamily === 'tower' || cell.y >= 3) {
     if (connected.length === 1) return { assetType: 'roof_high_gable', direction: _lineDirection(connected) }
     if (connected.length >= 2 && connected.length < 4) return { assetType: 'roof_high_gable', direction: areOpposite(connected[0], connected[1]) ? _lineDirection(connected) : _cornerDirection(connected) }
     if (connected.length === 4) return { assetType: 'roof_high_flat', direction: 2 }

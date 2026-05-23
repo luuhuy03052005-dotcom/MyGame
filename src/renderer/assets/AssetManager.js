@@ -26,6 +26,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import { BUILD_MATERIALS, DEFAULT_MATERIAL } from './AssetRegistry.js'
 import {
   getKit,
+  getKitModelFiles,
   getKitModelUrl as resolveKitModelUrl,
   getKitTextureUrl as resolveKitTextureUrl,
 } from './KitRegistry.js'
@@ -39,7 +40,7 @@ const _textureCache = new Map()
 const _textureLoader = new THREE.TextureLoader()
 let _ready = false
 let _activeKitId = 'kenney-city-suburban'
-let _activeTextureVariation = 'variation-a.png'
+let _activeTextureVariation = 'original'
 
 const MATERIAL_IDS = BUILD_MATERIALS.map(material => material.id)
 const VISUAL_VARIANT_COUNT = 3
@@ -88,6 +89,14 @@ const RAW_MODEL_PRELOAD_FILES = [
   'roof-high-flat.glb',
   'chimney.glb',
   'lantern.glb',
+  'banner-green.glb',
+  'banner-red.glb',
+  'cart.glb',
+  'fountain-round.glb',
+  'fountain-square.glb',
+  'hedge.glb',
+  'stall.glb',
+  'stairs-stone.glb',
 ]
 
 const SUBURBAN_RAW_MODEL_PRELOAD_FILES = [
@@ -129,13 +138,76 @@ const SUBURBAN_RAW_MODEL_PRELOAD_FILES = [
   'tree-large.glb',
 ]
 
+const BOOT_RAW_MODEL_PRELOAD_FILES = [
+  'road.glb',
+  'road-edge.glb',
+  'road-corner.glb',
+  'road-corner-inner.glb',
+  'road-bend.glb',
+  'road-curb.glb',
+  'road-curb-end.glb',
+  'wall-arch.glb',
+  'wall-arch-top.glb',
+  'wall-block.glb',
+  'wall-corner-edge.glb',
+  'wall-rounded.glb',
+  'rock-wide.glb',
+  'wall.glb',
+  'wall-window-small.glb',
+  'wall-window-shutters.glb',
+  'wall-window-round.glb',
+  'wall-door.glb',
+  'wall-corner.glb',
+  'roof-point.glb',
+  'roof-gable.glb',
+  'roof-gable-detail.glb',
+  'roof-flat.glb',
+  'roof-corner.glb',
+  'roof-gable-top.glb',
+  'chimney.glb',
+  'lantern.glb',
+  'hedge.glb',
+]
+
+const SUBURBAN_BOOT_RAW_MODEL_PRELOAD_FILES = [
+  'building-type-a.glb',
+  'building-type-b.glb',
+  'building-type-c.glb',
+  'driveway-long.glb',
+  'driveway-short.glb',
+  'fence.glb',
+  'fence-low.glb',
+  'path-long.glb',
+  'path-short.glb',
+  'path-stones-long.glb',
+  'path-stones-short.glb',
+  'path-stones-messy.glb',
+  'planter.glb',
+  'tree-small.glb',
+  'tree-large.glb',
+]
+
 const RAW_ONLY_ASSET_TYPES = new Set([
   'surface_driveway_long',
   'prop_fence',
   'prop_fence_low',
+  'prop_fence_1x2',
+  'prop_fence_1x3',
+  'prop_fence_1x4',
+  'prop_fence_2x2',
+  'prop_fence_2x3',
+  'prop_fence_3x2',
+  'prop_fence_3x3',
   'prop_planter',
   'prop_tree_small',
   'prop_tree_large',
+  'prop_banner_green',
+  'prop_banner_red',
+  'prop_cart',
+  'prop_fountain_round',
+  'prop_fountain_square',
+  'prop_hedge',
+  'prop_stall',
   ...'abcdefghijklmnopqrstu'.split('').map(letter => `prefab_house_${letter}`),
 ])
 
@@ -951,18 +1023,17 @@ const AssetManager = {
   async preload(keys) {
     console.log(`[AssetManager] Active kit: ${_activeKitId}`)
     console.log(`[AssetManager] Texture variation: ${_activeTextureVariation}`)
-    const keysToLoad = [...new Set([...keys, ...Object.keys(MODEL_PATHS)])]
+    const keysToLoad = ['_fallback']
     const materialKeys = []
     for (const key of keysToLoad) {
       if (key === '_fallback') {
         materialKeys.push({ key, material: DEFAULT_MATERIAL, variant: 0 })
         continue
       }
-      for (const material of MATERIAL_IDS) {
-        for (let variant = 0; variant < VISUAL_VARIANT_COUNT; variant++) {
-          materialKeys.push({ key, material, variant })
-        }
-      }
+      // Runtime now renders VisualRecipe layers from raw GLB prototypes.
+      // Keep one fallback prototype per assetType; material/topology variants are
+      // generated lazily from the raw cache when the old composite fallback is used.
+      materialKeys.push({ key, material: DEFAULT_MATERIAL, variant: 0 })
     }
     const total = materialKeys.length
 
@@ -981,25 +1052,13 @@ const AssetManager = {
       }
     }
 
-    for (const fileName of RAW_MODEL_PRELOAD_FILES) {
-      try {
-        await _loadRawModel(fileName, 'kenney-town-kit')
-      } catch (err) {
-        console.warn(`[AssetManager] Raw GLB preload failed for ${fileName}`, err)
-      }
-    }
-
-    for (const fileName of SUBURBAN_RAW_MODEL_PRELOAD_FILES) {
-      try {
-        await _loadRawModel(fileName, 'kenney-city-suburban')
-      } catch (err) {
-        console.warn(`[AssetManager] Suburban raw GLB preload failed for ${fileName}`, err)
-      }
-    }
+    await _preloadRawKitModels('kenney-town-kit', BOOT_RAW_MODEL_PRELOAD_FILES, { timeoutMs: 4000 })
+    await _preloadRawKitModels('kenney-city-suburban', SUBURBAN_BOOT_RAW_MODEL_PRELOAD_FILES, { timeoutMs: 4000 })
 
     _ready = true
     console.log(`[AssetManager] Ready — ${_cache.size} GLB assets, ${_placeholderCache.size} placeholder fallbacks`)
     window.dispatchEvent(new CustomEvent('assetmanager:ready'))
+    _warmRemainingRawKitModels()
   },
 
   /**
@@ -1068,9 +1127,13 @@ const AssetManager = {
     return resolveKitTextureUrl(textureName, kitId)
   },
 
-  setTextureVariation(textureName = 'variation-a.png') {
+  setTextureVariation(textureName = 'original') {
     const kit = getKit(_activeKitId)
-    const next = kit.variations.includes(textureName) ? textureName : kit.variations[0]
+    const next = textureName === 'original'
+      ? 'original'
+      : kit.variations.includes(textureName)
+        ? textureName
+        : 'original'
     _activeTextureVariation = next
     _textureCache.delete(_textureCacheKey(_activeKitId, next))
     console.log(`[AssetManager] Texture variation: ${_activeTextureVariation}`)
@@ -1082,6 +1145,52 @@ const AssetManager = {
 }
 
 // ===== Internal Helpers =====
+
+async function _preloadRawKitModels(kitId, priorityFiles = [], options = {}) {
+  const files = [
+    ...new Set([
+      ...priorityFiles,
+      ...(options.includeAll ? getKitModelFiles(kitId) : []),
+    ]),
+  ]
+
+  const batchSize = options.includeAll ? 4 : 8
+  const timeoutMs = options.timeoutMs ?? 8000
+  for (let i = 0; i < files.length; i += batchSize) {
+    const batch = files.slice(i, i + batchSize)
+    await Promise.all(batch.map(async (fileName) => {
+      try {
+        await _loadRawModelWithTimeout(fileName, kitId, timeoutMs)
+      } catch (err) {
+        console.warn(`[AssetManager] Raw GLB preload failed for ${kitId}/${fileName}`, err)
+      }
+    }))
+  }
+}
+
+function _loadRawModelWithTimeout(fileName, kitId, timeoutMs = 8000) {
+  let timeoutId = null
+  const timeout = new Promise((_, reject) => {
+    timeoutId = globalThis.setTimeout?.(() => {
+      reject(new Error(`Timed out loading ${kitId}/${fileName}`))
+    }, timeoutMs)
+  })
+  return Promise.race([
+    _loadRawModel(fileName, kitId),
+    timeout,
+  ]).finally(() => {
+    if (timeoutId !== null) globalThis.clearTimeout?.(timeoutId)
+  })
+}
+
+function _warmRemainingRawKitModels() {
+  globalThis.setTimeout?.(() => {
+    _preloadRawKitModels('kenney-town-kit', RAW_MODEL_PRELOAD_FILES, { includeAll: true })
+      .catch(err => console.warn('[AssetManager] Background town-kit warmup failed', err))
+    _preloadRawKitModels('kenney-city-suburban', SUBURBAN_RAW_MODEL_PRELOAD_FILES, { includeAll: true })
+      .catch(err => console.warn('[AssetManager] Background city-suburban warmup failed', err))
+  }, 0)
+}
 
 function normalizeMaterialId(materialId) {
   return MATERIAL_IDS.includes(materialId) ? materialId : DEFAULT_MATERIAL
@@ -1169,6 +1278,7 @@ function _resolveRawKitId(fileName, preferredKitId = _activeKitId) {
 
 function _activeKitTexture(kitId = _activeKitId) {
   const textureName = _activeTextureVariation
+  if (textureName === 'original') return null
   const url = resolveKitTextureUrl(textureName, kitId)
     ?? resolveKitTextureUrl('colormap.png', kitId)
   if (!url) return null

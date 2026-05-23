@@ -27,6 +27,7 @@ import { InputHandler }     from './engine/InputHandler.js'
 import { AudioSystem }      from './engine/AudioSystem.js'
 // World (Phase E — Nugget8 Ocean/Skybox)
 import { NuggetEnvironmentManager as CoastletEnvironmentManager } from './world/NuggetEnvironmentManager.js'
+import { AmbientLifeSystem } from './world/AmbientLifeSystem.js'
 // Game
 import { GridManager }          from './game/GridManager.js'
 import { ProceduralRuleEngine } from './game/ProceduralRuleEngine.js'
@@ -92,6 +93,11 @@ async function bootstrap() {
   setLoadingProgress(55, 'Particle System...')
   ParticleSystem.init(SceneManager.getScene())
   RenderLoop.onTick((delta) => ParticleSystem.update(delta))
+  AmbientLifeSystem.init({
+    scene: SceneManager.getScene(),
+    camera: SceneManager.getCamera(),
+    renderLoop: RenderLoop,
+  })
 
   setLoadingProgress(60, 'Loading assets...')
   await AssetManager.preload(VALID_ASSET_TYPES)
@@ -143,10 +149,15 @@ async function bootstrap() {
 
   // Load Settings & Check Autosave sau bootstrap
   await _initializeSettingsAndAutosave()
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('debugWorld') === 'alive') {
+    _seedAliveDebugWorld()
+  }
 
   setLoadingProgress(100, 'Ready!')
   await new Promise(r => setTimeout(r, 300))
   hideLoadingScreen()
+  window.__coastletReady = true
+  window.dispatchEvent(new CustomEvent('coastlet:ready'))
 
   RenderLoop.start()
   console.log('[app.js] Full bootstrap complete ✅')
@@ -410,7 +421,7 @@ function _loadWorldFromJson(jsonString) {
           activeMaterial: data.palette?.activeMaterial ?? cell.material,
           activeCategory: data.palette?.activeCategory ?? 'auto',
           activeAssetId: data.palette?.activeAssetId ?? 'auto',
-          activeTextureVariation: data.palette?.activeTextureVariation ?? 'variation-a.png',
+          activeTextureVariation: data.palette?.activeTextureVariation ?? 'original',
           autoMode: data.palette?.autoMode !== false,
           activeKit: data.palette?.activeMaterial === 'suburban' || data.palette?.activeCategory === 'prefab'
             ? 'kenney-city-suburban'
@@ -440,6 +451,7 @@ function _loadWorldFromJson(jsonString) {
         SceneManager.getScene().add(mesh)
         cell.mesh = mesh
         BuildController.registerBuildableObject(mesh)
+        AmbientLifeSystem.registerObject(mesh, 'auto', { cellId: cell.id })
       }
     })
 
@@ -517,12 +529,52 @@ function _doNewWorld(showToast) {
   })
   GridManager.clear()
   BuildController.clearBuildableObjects()
+  AmbientLifeSystem.clear()
   UndoRedoStack.clear()
   _currentWorldMeta = null
   Toolbar.setUndoEnabled(false)
   Toolbar.setRedoEnabled(false)
   window.dispatchEvent(new CustomEvent('world:visualsChanged'))
   if (showToast) Toolbar.showToast('New world created 🗺️', 'info')
+}
+
+function _seedAliveDebugWorld() {
+  _doNewWorld(false)
+
+  BuildController.setActiveColor('#F5DEB3')
+  BuildController.setBuildSelection({
+    material: 'stone_quay',
+    category: 'auto',
+    assetId: 'auto',
+    autoMode: true,
+  })
+
+  for (let x = -1; x <= 2; x++) {
+    for (let z = -1; z <= 2; z++) {
+      BuildController.build({ x, z })
+    }
+  }
+
+  BuildController.setBuildSelection({
+    material: 'plaster',
+    category: 'auto',
+    assetId: 'auto',
+    autoMode: true,
+  })
+  BuildController.build({ x: -1, z: 0 })
+  BuildController.build({ x: 0, z: 0 })
+  BuildController.build({ x: 1, z: 0 })
+
+  BuildController.setBuildSelection({
+    material: 'suburban',
+    category: 'auto',
+    assetId: 'auto',
+    autoMode: true,
+  })
+  BuildController.build({ x: 2, z: 2 })
+
+  window.dispatchEvent(new CustomEvent('world:visualsChanged'))
+  console.log('[app.js] Debug alive world seeded')
 }
 
 function _resolveLoadedMaterial(y, activeMaterial = 'stone_quay') {

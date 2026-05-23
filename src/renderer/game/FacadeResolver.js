@@ -49,8 +49,12 @@ function resolve(cell, neighbors, buildContext = {}) {
   const family = _normalizeFamily(buildContext.materialFamily ?? cell.material)
   const topology = buildContext.topologySignature ?? openDirections.join('')
   const accessDirections = buildContext.accessDirections ?? []
+  const balconyDirections = buildContext.balconyDirections ?? []
   const canUseDoor = _canUseDoor(cell, neighbors, accessDirections)
-  const canUseBalcony = _canUseBalcony(cell, neighbors)
+  const canUseBalcony = _canUseBalcony(cell, neighbors, balconyDirections)
+  const preferredDoorDirection = buildContext.lot?.isEntranceHost
+    ? buildContext.lot.entranceDirection
+    : accessDirections[0]
 
   return openDirections.map((direction, index) => {
     const side = sideNameFromDirection(direction)
@@ -61,7 +65,9 @@ function resolve(cell, neighbors, buildContext = {}) {
       openDirections,
       canUseDoor,
       accessDirections,
+      preferredDoorDirection,
       canUseBalcony,
+      balconyDirections,
     })
     const assetType = _assetForDetail(seed, family, detail)
 
@@ -82,13 +88,25 @@ function _pickFacadeDetail(seed, context) {
   if (
     context.canUseDoor &&
     context.accessDirections.includes(context.direction) &&
+    context.direction === context.preferredDoorDirection
+  ) {
+    return 'door'
+  }
+
+  if (
+    context.canUseDoor &&
+    context.accessDirections.includes(context.direction) &&
     context.index === 0 &&
     chance(`${seed}|door`, 0.24)
   ) {
     return 'door'
   }
 
-  if (context.canUseBalcony && chance(`${seed}|balcony`, 0.12)) {
+  if (
+    context.canUseBalcony &&
+    context.balconyDirections.includes(context.direction) &&
+    chance(`${seed}|balcony`, 0.18)
+  ) {
     return 'balcony'
   }
 
@@ -116,8 +134,11 @@ function _canUseDoor(cell, neighbors, accessDirections = []) {
     accessDirections.length > 0
 }
 
-function _canUseBalcony(cell, neighbors) {
-  return cell.y >= 2 && Boolean(neighbors.bottom) && getOpenDirections(neighbors).length > 0
+function _canUseBalcony(cell, neighbors, balconyDirections = []) {
+  return cell.y === 2 &&
+    Boolean(neighbors.bottom) &&
+    getOpenDirections(neighbors).length > 0 &&
+    balconyDirections.length > 0
 }
 
 function _normalizeFamily(family) {

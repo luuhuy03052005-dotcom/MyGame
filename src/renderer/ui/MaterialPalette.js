@@ -12,6 +12,19 @@ import {
   DEFAULT_MATERIAL,
 } from '../assets/AssetRegistry.js'
 
+const PREVIEW_URLS = {
+  ...import.meta.glob('../assets/models/kenney-town-kit/Previews/*.png', {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  }),
+  ...import.meta.glob('../assets/models/kenney-city-suburban/Previews/*.png', {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  }),
+}
+
 let container = null
 let panelEl = null
 let activeMaterial = DEFAULT_MATERIAL
@@ -19,9 +32,10 @@ let activeCategory = 'auto'
 let activeAssetId = 'auto'
 let autoMode = true
 let isVisible = false
-let activeTextureVariation = 'variation-a.png'
+let activeTextureVariation = 'original'
 
 const TEXTURE_VARIATIONS = [
+  { id: 'original', label: 'Kit' },
   { id: 'colormap.png', label: 'Base' },
   { id: 'variation-a.png', label: 'A' },
   { id: 'variation-b.png', label: 'B' },
@@ -78,7 +92,7 @@ const MaterialPalette = {
 
   setTextureVariation(textureName) {
     const exists = TEXTURE_VARIATIONS.some(variation => variation.id === textureName)
-    activeTextureVariation = exists ? textureName : 'variation-a.png'
+    activeTextureVariation = exists ? textureName : 'original'
     _updateSelection()
     window.dispatchEvent(new CustomEvent('kit:texturechange', {
       detail: { textureName: activeTextureVariation },
@@ -403,7 +417,7 @@ function _createItemRow() {
 
     const img = document.createElement('img')
     img.alt = asset.label
-    img.src = _previewUrl(asset.previewPath)
+    img.src = _previewUrl(asset)
 
     slot.appendChild(img)
     slot.addEventListener('click', () => MaterialPalette.setActiveAsset(asset.id))
@@ -436,8 +450,16 @@ function _syncActiveAsset() {
   }
 }
 
-function _previewUrl(previewPath) {
-  return new URL(`../assets/models/kenney-town-kit/${previewPath}`, import.meta.url).href
+function _previewUrl(asset) {
+  const previewPath = asset.previewPath ?? ''
+  const normalizedPath = previewPath.startsWith('Previews/')
+    ? previewPath
+    : `Previews/${previewPath}`
+  const kitFolder = asset.family === 'suburban' || asset.category === 'prefab'
+    ? 'kenney-city-suburban'
+    : 'kenney-town-kit'
+
+  return PREVIEW_URLS[`../assets/models/${kitFolder}/${normalizedPath}`] ?? ''
 }
 
 function _setupKeyboard() {

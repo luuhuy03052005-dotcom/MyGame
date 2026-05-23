@@ -24,6 +24,13 @@ const textureUrls = {
   }),
 }
 
+function filesForKitBase(basePath) {
+  return Object.keys(modelUrls)
+    .filter(path => path.startsWith(basePath))
+    .map(path => path.slice(basePath.length))
+    .sort()
+}
+
 const suburbanPrefabs = Object.fromEntries(
   'abcdefghijklmnopqrstu'.split('').map(letter => [
     `prefab_house_${letter}`,
@@ -53,8 +60,32 @@ const KIT_REGISTRY = {
         surface_quay_corner: 'road-corner.glb',
       },
       props: {
+        prop_banner_green: 'banner-green.glb',
+        prop_banner_red: 'banner-red.glb',
+        prop_cart: 'cart.glb',
+        prop_cart_high: 'cart-high.glb',
+        prop_chimney: 'chimney.glb',
+        prop_fence: 'fence.glb',
+        prop_fence_broken: 'fence-broken.glb',
+        prop_fence_curved: 'fence-curved.glb',
+        prop_fence_gate: 'fence-gate.glb',
+        prop_fountain_center: 'fountain-center.glb',
+        prop_fountain_corner: 'fountain-corner.glb',
+        prop_fountain_round: 'fountain-round.glb',
+        prop_fountain_square: 'fountain-square.glb',
+        prop_hedge: 'hedge.glb',
+        prop_hedge_curved: 'hedge-curved.glb',
+        prop_hedge_gate: 'hedge-gate.glb',
+        prop_hedge_large: 'hedge-large.glb',
+        prop_lantern: 'lantern.glb',
+        prop_stall: 'stall.glb',
+        prop_stall_bench: 'stall-bench.glb',
+        prop_stall_green: 'stall-green.glb',
+        prop_stall_red: 'stall-red.glb',
         prop_tree_small: 'tree.glb',
         prop_tree_large: 'tree-high.glb',
+        prop_watermill: 'watermill.glb',
+        prop_windmill: 'windmill.glb',
       },
       prefabs: {},
     },
@@ -88,6 +119,13 @@ const KIT_REGISTRY = {
       props: {
         prop_fence: 'fence.glb',
         prop_fence_low: 'fence-low.glb',
+        prop_fence_1x2: 'fence-1x2.glb',
+        prop_fence_1x3: 'fence-1x3.glb',
+        prop_fence_1x4: 'fence-1x4.glb',
+        prop_fence_2x2: 'fence-2x2.glb',
+        prop_fence_2x3: 'fence-2x3.glb',
+        prop_fence_3x2: 'fence-3x2.glb',
+        prop_fence_3x3: 'fence-3x3.glb',
         prop_planter: 'planter.glb',
         prop_tree_small: 'tree-small.glb',
         prop_tree_large: 'tree-large.glb',
@@ -124,10 +162,16 @@ function getAvailableKits() {
   return Object.values(KIT_REGISTRY)
 }
 
+function getKitModelFiles(kitId = 'kenney-town-kit') {
+  const kit = getKit(kitId)
+  return filesForKitBase(kit.basePath)
+}
+
 export {
   KIT_REGISTRY,
   getAvailableKits,
   getKit,
+  getKitModelFiles,
   getKitModelUrl,
   getKitTextureUrl,
   getSemanticAsset,

@@ -38,6 +38,7 @@ import { ParticleSystem } from '../engine/ParticleSystem.js'
 import { BuildingGrammarEngine } from './BuildingGrammarEngine.js'
 import { VisualRecipeRenderer } from './VisualRecipeRenderer.js'
 import { PrefabPlacementMode } from './PrefabPlacementMode.js'
+import { AmbientLifeSystem } from '../world/AmbientLifeSystem.js'
 
 const CELL_SIZE = 1
 const CELL_HEIGHT = 1
@@ -61,6 +62,7 @@ const BUILDING_MATERIAL_ALIASES = {
   harbor_pier: 'wood',
   coast: 'plaster',
 }
+const ENTRANCE_DIRECTION_ORDER = [2, 1, 0, 3]
 
 // Buildable objects cho raycaster — water + tất cả block meshes
 const _buildableObjects = []
@@ -121,8 +123,23 @@ const BuildController = {
     const cellColor = color || activeColor
     const cellMaterial = _resolveMaterialForCell(y, material || activeMaterial)
 
+    const autoSupportSpecs = y === 1 ? _planAutoEntranceSupport(x, z) : []
+    const affectedCells = _collectCellsForRefresh(x, y, z)
+    for (const spec of autoSupportSpecs) {
+      affectedCells.push(..._collectCellsForRefresh(spec.x, spec.y, spec.z))
+    }
+
     // Lưu snapshot của neighbors trước khi add (cho undo)
-    const affectedSnapshots = _snapshotCells(_collectCellsForRefresh(x, y, z))
+    const affectedSnapshots = _snapshotCells(affectedCells)
+
+    const autoSupportCells = []
+    for (const spec of autoSupportSpecs) {
+      const support = gridManager.addCell(spec.x, spec.y, spec.z, cellColor)
+      support.material = spec.material
+      support.metadata = { ...(spec.metadata ?? {}) }
+      _resolveAndRespawn(support)
+      autoSupportCells.push(support)
+    }
 
     // Thêm cell vào grid
     const cell = gridManager.addCell(x, y, z, cellColor)
@@ -131,12 +148,20 @@ const BuildController = {
     // Resolve assetType + rotation cho cell mới VÀ tất cả neighbors bị ảnh hưởng
     _resolveAndRespawn(cell)
     _resolveNeighborsOf(x, y, z)
+    for (const support of autoSupportCells) {
+      _resolveNeighborsOf(support.x, support.y, support.z)
+    }
 
     // Bridge detection
     _detectAndRenderBridges()
 
     // Undo stack
-    undoStack.push({ type: 'add', cell, affectedSnapshots })
+    undoStack.push({
+      type: 'add',
+      cell,
+      autoCells: autoSupportCells.map(_snapshotCell),
+      affectedSnapshots,
+    })
 
     // Play synthesized Plop sound sweep (P5-06)
     AudioSystem.playBuild()
@@ -161,7 +186,14 @@ const BuildController = {
     const { y } = topCell
 
     // Snapshot trước khi xóa
-    const affectedSnapshots = _snapshotCells(_collectCellsForRefresh(x, y, z))
+    let affectedCells = _collectCellsForRefresh(x, y, z)
+    if (topCell.metadata?.prefabInstanceId) {
+      affectedCells = [
+        ...affectedCells,
+        ..._prefabOwnedCells(topCell.metadata.prefabInstanceId).flatMap(cell => _collectCellsForRefresh(cell.x, cell.y, cell.z)),
+      ]
+    }
+    const affectedSnapshots = _snapshotCells(affectedCells)
 
     // Xóa mesh khỏi scene
     _removeMesh(topCell)
@@ -169,7 +201,9 @@ const BuildController = {
     // Xóa khỏi GridManager
     gridManager.removeCell(x, y, z)
 
+    let removedAutoCells = []
     if (topCell.metadata?.prefabInstanceId) {
+      removedAutoCells = _removePrefabOwnedAutoCells(topCell.metadata.prefabInstanceId)
       _clearPrefabReservations(topCell.metadata.prefabInstanceId)
     }
 
@@ -183,7 +217,7 @@ const BuildController = {
     // Bridge re-detection
     _detectAndRenderBridges()
 
-    undoStack.push({ type: 'remove', cell: topCell, affectedSnapshots })
+    undoStack.push({ type: 'remove', cell: topCell, affectedSnapshots, removedAutoCells })
 
     // Play synthesized Poof sound sweep (P5-06)
     AudioSystem.playDelete()
@@ -205,6 +239,7 @@ const BuildController = {
         _removeMesh(cell)
         gridManager.removeCell(x, y, z)
       }
+      _removeAutoCells(command.autoCells, command.cell.id)
     } else if (command.type === 'prefab_add') {
       for (const snap of command.cells) {
         const cell = gridManager.getCell(snap.x, snap.y, snap.z)
@@ -214,6 +249,13 @@ const BuildController = {
       }
     } else if (command.type === 'remove') {
       // Undo remove → re-add cell
+      for (const snap of command.removedAutoCells ?? []) {
+        if (gridManager.hasCell(snap.x, snap.y, snap.z)) continue
+        const autoCell = gridManager.addCell(snap.x, snap.y, snap.z, snap.color)
+        _applySnapshotToCell(autoCell, snap)
+        _resolveAndRespawn(autoCell)
+      }
+
       const { x, y, z, color, material } = command.cell
       const cell = gridManager.addCell(x, y, z, color)
       cell.material = material ?? _resolveMaterialForCell(y)
@@ -245,6 +287,15 @@ const BuildController = {
     if (command.type === 'add') {
       // Redo add → re-add cell
       const { x, y, z, color, material } = command.cell
+      const restoredAuto = []
+      for (const snap of command.autoCells ?? []) {
+        if (gridManager.hasCell(snap.x, snap.y, snap.z)) continue
+        const support = gridManager.addCell(snap.x, snap.y, snap.z, snap.color ?? color)
+        _applySnapshotToCell(support, snap)
+        restoredAuto.push(support)
+      }
+      for (const support of restoredAuto) _resolveAndRespawn(support)
+
       const cell = gridManager.addCell(x, y, z, color)
       cell.material = material ?? _resolveMaterialForCell(y)
       cell.metadata = { ...(command.cell.metadata ?? {}) }
@@ -264,11 +315,20 @@ const BuildController = {
       if (cell) {
         _removeMesh(cell)
         gridManager.removeCell(x, y, z)
+        if (cell.metadata?.prefabInstanceId) {
+          _removePrefabOwnedAutoCells(cell.metadata.prefabInstanceId)
+          _clearPrefabReservations(cell.metadata.prefabInstanceId)
+        }
       }
     }
 
     if (command.type === 'prefab_add') {
       for (const snap of command.cells) {
+        _resolveNeighborsOf(snap.x, snap.y, snap.z)
+      }
+    } else if (command.type === 'add' && command.autoCells?.length) {
+      _resolveNeighborsOf(command.cell.x, command.cell.y, command.cell.z)
+      for (const snap of command.autoCells) {
         _resolveNeighborsOf(snap.x, snap.y, snap.z)
       }
     } else {
@@ -355,6 +415,100 @@ function _resolveMaterialForCell(y, requestedMaterial = activeMaterial) {
   return BUILDING_MATERIAL_ALIASES[requested] ?? requested
 }
 
+function _planAutoEntranceSupport(x, z) {
+  const supportedDirection = ENTRANCE_DIRECTION_ORDER.find(direction => {
+    const [dx, dz] = _directionOffset(direction)
+    const topCell = gridManager.getTopCell(x + dx, z + dz)
+    return topCell?.y === 0 && !topCell.metadata?.reservedBy
+  })
+  if (supportedDirection !== undefined) return []
+
+  const direction = ENTRANCE_DIRECTION_ORDER.find(candidate => {
+    const [dx, dz] = _directionOffset(candidate)
+    return !gridManager.getTopCell(x + dx, z + dz)
+  })
+  if (direction === undefined) return []
+
+  const [dx, dz] = _directionOffset(direction)
+  const ownerCellId = `${x}_1_${z}`
+  const specs = [{
+    x: x + dx,
+    y: 0,
+    z: z + dz,
+    material: 'stone_quay',
+    metadata: {
+      autoGenerated: true,
+      autoReason: 'entrance_path',
+      ownerCellId,
+      surfaceAssetType: 'surface_entrance',
+      surfaceRole: 'entrance',
+      surfaceDirection: direction,
+    },
+  }]
+
+  if (activeMaterial === 'suburban') {
+    const planned = new Set(specs.map(spec => `${spec.x}_${spec.y}_${spec.z}`))
+    const back = _oppositeDirection(direction)
+    const sideDirs = direction === 0 || direction === 1 ? [2, 3] : [0, 1]
+    for (const lotDirection of [...sideDirs, back]) {
+      const [ldx, ldz] = _directionOffset(lotDirection)
+      const key = `${x + ldx}_0_${z + ldz}`
+      if (planned.has(key) || gridManager.getTopCell(x + ldx, z + ldz)) continue
+      planned.add(key)
+      specs.push({
+        x: x + ldx,
+        y: 0,
+        z: z + ldz,
+        material: 'stone_quay',
+        metadata: {
+          autoGenerated: true,
+          autoReason: lotDirection === back ? 'suburban_backyard' : 'suburban_side_yard',
+          ownerCellId,
+          surfaceAssetType: lotDirection === back ? 'surface_plaza_center' : 'surface_plaza_edge',
+          surfaceRole: 'plaza',
+          surfaceDirection: lotDirection,
+        },
+      })
+    }
+  }
+
+  return specs
+}
+
+function _removeAutoCells(autoCellSnapshots = [], ownerCellId) {
+  for (const snap of autoCellSnapshots) {
+    const cell = gridManager.getCell(snap.x, snap.y, snap.z)
+    if (!cell) continue
+    if (!cell.metadata?.autoGenerated || cell.metadata?.ownerCellId !== ownerCellId) continue
+    if (gridManager.getTopCell(cell.x, cell.z)?.id !== cell.id) continue
+
+    _removeMesh(cell)
+    gridManager.removeCell(cell.x, cell.y, cell.z)
+    _resolveNeighborsOf(cell.x, cell.y, cell.z)
+  }
+}
+
+function _prefabOwnedCells(prefabInstanceId) {
+  return gridManager.getAllCells().filter(cell =>
+    cell.metadata?.ownerPrefabInstanceId === prefabInstanceId ||
+    cell.metadata?.reservedBy === prefabInstanceId
+  )
+}
+
+function _removePrefabOwnedAutoCells(prefabInstanceId) {
+  const removed = []
+  for (const cell of _prefabOwnedCells(prefabInstanceId)) {
+    if (!cell.metadata?.autoGenerated) continue
+    if (gridManager.getTopCell(cell.x, cell.z)?.id !== cell.id) continue
+
+    removed.push(_snapshotCell(cell))
+    _removeMesh(cell)
+    gridManager.removeCell(cell.x, cell.y, cell.z)
+    _resolveNeighborsOf(cell.x, cell.y, cell.z)
+  }
+  return removed
+}
+
 function _buildPrefab(x, z, color, prefabId) {
   const plan = PrefabPlacementMode.createPlan(gridManager, x, z, prefabId)
   if (!plan) {
@@ -404,10 +558,20 @@ function _buildPrefab(x, z, color, prefabId) {
 
 function _clearPrefabReservations(prefabInstanceId) {
   for (const cell of gridManager.getAllCells()) {
-    if (cell.metadata?.reservedBy !== prefabInstanceId) continue
+    if (
+      cell.metadata?.reservedBy !== prefabInstanceId &&
+      cell.metadata?.ownerPrefabInstanceId !== prefabInstanceId
+    ) continue
+
     const metadata = { ...(cell.metadata ?? {}) }
     delete metadata.reservedBy
     delete metadata.reservationRole
+    delete metadata.prefabProfile
+    delete metadata.ownerPrefabInstanceId
+    delete metadata.ownerPrefabId
+    delete metadata.surfaceAssetType
+    delete metadata.surfaceRole
+    delete metadata.surfaceDirection
     cell.metadata = metadata
     _resolveAndRespawn(cell)
   }
@@ -494,6 +658,7 @@ function _spawnMesh(cell) {
 
   scene.add(proto)
   cell.mesh = proto
+  AmbientLifeSystem.registerObject(proto, 'auto', { cellId: cell.id })
 
   // Add vào buildable objects
   if (!_buildableObjects.includes(proto)) {
@@ -631,6 +796,13 @@ function _directionOffset(direction) {
   return [0, -1]
 }
 
+function _oppositeDirection(direction) {
+  if (direction === 0) return 1
+  if (direction === 1) return 0
+  if (direction === 2) return 3
+  return 2
+}
+
 function _countHorizontalNeighbors(neighbors) {
   let count = 0
   if (neighbors.left) count++
@@ -669,6 +841,7 @@ function _removeMesh(cell) {
   if (!cell.mesh) return
 
   const mesh = cell.mesh
+  AmbientLifeSystem.unregisterObject(mesh)
 
   // Xóa ngay khỏi buildable objects (không pickable khi đang xóa)
   const idx = _buildableObjects.indexOf(mesh)
